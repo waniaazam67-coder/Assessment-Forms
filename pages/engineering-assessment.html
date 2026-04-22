@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Engineering Assessment</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <script src="../assets/js/forms.js" defer></script>
+</head>
+<body class="site-shell">
+  <main class="form-page">
+    <section class="form-card">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">Assessment module 3</p>
+          <h1>Engineering Assessment</h1>
+        </div>
+        <a class="back-link" href="index.html">Back to home</a>
+      </div>
+
+      <div class="form-body">
+        <div class="section-header">
+          <h2>Engineering Form</h2>
+          <p>Complete the roof material, drainage arrangement, and catchment area assessment in this single engineering form.</p>
+        </div>
+
+        <p class="helper-text selected-household-summary" data-selected-household-summary hidden></p>
+
+        <form class="engineering-form" data-engineering-form novalidate>
+          <div class="assessment-grid">
+            <label class="field field-span-1">
+              <span>Household ID</span>
+              <input type="text" data-selected-household-id readonly>
+            </label>
+
+            <label class="field field-span-1">
+              <span>Selected Household</span>
+              <input type="text" data-selected-household-name readonly>
+            </label>
+
+            <label class="field field-span-1">
+              <span>Engineer Name</span>
+              <select data-engineer-select>
+                <option value="" selected disabled hidden>Select engineer</option>
+              </select>
+            </label>
+
+          </div>
+
+          <div class="section-header section-header-compact engineering-block-title">
+            <h3>Question 1. Housing structure</h3>
+            <p>Enter the width and depth. The area will be calculated automatically and used in the final storage calculation.</p>
+          </div>
+
+          <div class="assessment-grid engineering-mini-grid">
+            <label class="field field-span-1">
+              <span>Width (in ft)</span>
+              <input type="number" min="0" step="0.01" placeholder="W" data-housing-width>
+            </label>
+
+            <label class="field field-span-1">
+              <span>Depth (in ft)</span>
+              <input type="number" min="0" step="0.01" placeholder="D" data-housing-depth>
+            </label>
+
+            <label class="field field-span-1">
+              <span>Area (W x D)</span>
+              <input type="text" placeholder="Area" data-housing-area readonly>
+            </label>
+          </div>
+
+          <div class="section-header section-header-compact engineering-block-title">
+            <h3>Question 2. Construction material used for roof</h3>
+          </div>
+          <div class="checkbox-stack">
+            <label class="checkbox-card"><input type="checkbox" name="roof-material" value="RCC slab(Lanter)"> RCC slab(Lanter)</label>
+            <label class="checkbox-card"><input type="checkbox" name="roof-material" value="Prefabricated RCC slabs, T-iron and girder beams"> Prefabricated RCC slabs, T-iron and girder beams</label>
+            <label class="checkbox-card"><input type="checkbox" name="roof-material" value="Clay bricks/tiles, T-iron and grinder beams"> Clay bricks/tiles, T-iron and grinder beams</label>
+            <label class="checkbox-card"><input type="checkbox" name="roof-material" value="Any other" data-toggle-target="roof-other"> Any other</label>
+          </div>
+
+          <label class="field engineering-other-field" data-toggle-field="roof-other" hidden>
+            <span>Please specify other roof material</span>
+            <input type="text" placeholder="Enter other roof material">
+          </label>
+
+          <div class="section-header section-header-compact engineering-block-title">
+            <h3>Question 3. Arrangement of Rainwater Drainage</h3>
+          </div>
+          <div class="checkbox-stack">
+            <label class="checkbox-card"><input type="checkbox" name="drainage-arrangement" value="Rainwater from rooftop, balconies, terraces and shades is drained separately and NOT drained into sewerage system."> Rainwater from rooftop, balconies, terraces and shades is drained separately and NOT drained into sewerage system.</label>
+            <label class="checkbox-card"><input type="checkbox" name="drainage-arrangement" value="Rainwater is NOT drained separately and is drained into sewerage system"> Rainwater is NOT drained separately and is drained into sewerage system</label>
+            <label class="checkbox-card"><input type="checkbox" name="drainage-arrangement" value="Other arrangement" data-toggle-target="drainage-other"> Other arrangement</label>
+            <label class="checkbox-card"><input type="checkbox" name="drainage-arrangement" value="Rainwater is drained directly into street"> Rainwater is drained directly into street</label>
+            <label class="checkbox-card"><input type="checkbox" name="drainage-arrangement" value="Rainwater is drained into courtyard or other part of house"> Rainwater is drained into courtyard or other part of house</label>
+          </div>
+
+          <label class="field engineering-other-field" data-toggle-field="drainage-other" hidden>
+            <span>Please specify other arrangement</span>
+            <input type="text" placeholder="Enter other arrangement">
+          </label>
+
+          <div class="section-header section-header-compact engineering-block-title">
+            <h3>Question 4. Assessment of Catchment Area</h3>
+            <p>Fill at least one row. Area is calculated automatically from Length x Width.</p>
+          </div>
+
+          <div class="engineering-table-wrap">
+            <table class="engineering-table">
+              <thead>
+                <tr>
+                  <th>Type of area</th>
+                  <th>Width (in ft)</th>
+                  <th>Length (in ft)</th>
+                  <th>Area (L x W)</th>
+                  <th>Number of drainage points and diameter of each point</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-catchment-row>
+                  <td>Mumty's Rooftop</td>
+                  <td><input type="number" min="0" step="0.01" placeholder="W" data-catchment-width></td>
+                  <td><input type="number" min="0" step="0.01" placeholder="L" data-catchment-length></td>
+                  <td><input type="text" placeholder="Area" data-catchment-area readonly></td>
+                  <td class="drainage-cell">
+                    <label>P1: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P2: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P3: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P4: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                  </td>
+                </tr>
+                <tr data-catchment-row>
+                  <td>Rooftop 1</td>
+                  <td><input type="number" min="0" step="0.01" placeholder="W" data-catchment-width></td>
+                  <td><input type="number" min="0" step="0.01" placeholder="L" data-catchment-length></td>
+                  <td><input type="text" placeholder="Area" data-catchment-area readonly></td>
+                  <td class="drainage-cell">
+                    <label>P1: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P2: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P3: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P4: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                  </td>
+                </tr>
+                <tr data-catchment-row>
+                  <td>Rooftop 2</td>
+                  <td><input type="number" min="0" step="0.01" placeholder="W" data-catchment-width></td>
+                  <td><input type="number" min="0" step="0.01" placeholder="L" data-catchment-length></td>
+                  <td><input type="text" placeholder="Area" data-catchment-area readonly></td>
+                  <td class="drainage-cell">
+                    <label>P1: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P2: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P3: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P4: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                  </td>
+                </tr>
+                <tr data-catchment-row>
+                  <td>Balcony 1</td>
+                  <td><input type="number" min="0" step="0.01" placeholder="W" data-catchment-width></td>
+                  <td><input type="number" min="0" step="0.01" placeholder="L" data-catchment-length></td>
+                  <td><input type="text" placeholder="Area" data-catchment-area readonly></td>
+                  <td class="drainage-cell">
+                    <label>P1: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P2: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P3: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P4: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                  </td>
+                </tr>
+                <tr data-catchment-row>
+                  <td>Balcony 2</td>
+                  <td><input type="number" min="0" step="0.01" placeholder="W" data-catchment-width></td>
+                  <td><input type="number" min="0" step="0.01" placeholder="L" data-catchment-length></td>
+                  <td><input type="text" placeholder="Area" data-catchment-area readonly></td>
+                  <td class="drainage-cell">
+                    <label>P1: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P2: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P3: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P4: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                  </td>
+                </tr>
+                <tr data-catchment-row>
+                  <td>Balcony 3</td>
+                  <td><input type="number" min="0" step="0.01" placeholder="W" data-catchment-width></td>
+                  <td><input type="number" min="0" step="0.01" placeholder="L" data-catchment-length></td>
+                  <td><input type="text" placeholder="Area" data-catchment-area readonly></td>
+                  <td class="drainage-cell">
+                    <label>P1: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P2: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P3: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P4: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                  </td>
+                </tr>
+                <tr data-catchment-row>
+                  <td>Terrace 1</td>
+                  <td><input type="number" min="0" step="0.01" placeholder="W" data-catchment-width></td>
+                  <td><input type="number" min="0" step="0.01" placeholder="L" data-catchment-length></td>
+                  <td><input type="text" placeholder="Area" data-catchment-area readonly></td>
+                  <td class="drainage-cell">
+                    <label>P1: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P2: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P3: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P4: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                  </td>
+                </tr>
+                <tr data-catchment-row>
+                  <td>Terrace 2</td>
+                  <td><input type="number" min="0" step="0.01" placeholder="W" data-catchment-width></td>
+                  <td><input type="number" min="0" step="0.01" placeholder="L" data-catchment-length></td>
+                  <td><input type="text" placeholder="Area" data-catchment-area readonly></td>
+                  <td class="drainage-cell">
+                    <label>P1: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P2: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P3: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P4: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                  </td>
+                </tr>
+                <tr data-catchment-row>
+                  <td>Terrace 3</td>
+                  <td><input type="number" min="0" step="0.01" placeholder="W" data-catchment-width></td>
+                  <td><input type="number" min="0" step="0.01" placeholder="L" data-catchment-length></td>
+                  <td><input type="text" placeholder="Area" data-catchment-area readonly></td>
+                  <td class="drainage-cell">
+                    <label>P1: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P2: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P3: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P4: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                  </td>
+                </tr>
+                <tr data-catchment-row>
+                  <td>Shade 1</td>
+                  <td><input type="number" min="0" step="0.01" placeholder="W" data-catchment-width></td>
+                  <td><input type="number" min="0" step="0.01" placeholder="L" data-catchment-length></td>
+                  <td><input type="text" placeholder="Area" data-catchment-area readonly></td>
+                  <td class="drainage-cell">
+                    <label>P1: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P2: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P3: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P4: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                  </td>
+                </tr>
+                <tr data-catchment-row>
+                  <td>Shade 2</td>
+                  <td><input type="number" min="0" step="0.01" placeholder="W" data-catchment-width></td>
+                  <td><input type="number" min="0" step="0.01" placeholder="L" data-catchment-length></td>
+                  <td><input type="text" placeholder="Area" data-catchment-area readonly></td>
+                  <td class="drainage-cell">
+                    <label>P1: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P2: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P3: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P4: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                  </td>
+                </tr>
+                <tr data-catchment-row>
+                  <td>Shade 3</td>
+                  <td><input type="number" min="0" step="0.01" placeholder="W" data-catchment-width></td>
+                  <td><input type="number" min="0" step="0.01" placeholder="L" data-catchment-length></td>
+                  <td><input type="text" placeholder="Area" data-catchment-area readonly></td>
+                  <td class="drainage-cell">
+                    <label>P1: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P2: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P3: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                    <label>P4: <input type="text" placeholder='D"' data-drainage-diameter></label>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <section class="tank-section" data-tank-section="underground">
+            <div class="section-header section-header-compact engineering-block-title">
+              <h3>Question 4. Underground Tank</h3>
+              <p class="tank-section__hint">This question is enabled only if <strong>Underground tank</strong> was selected in SEAF facilities.</p>
+            </div>
+
+            <div class="assessment-grid">
+              <label class="field field-span-1">
+                <span>Number of underground tanks</span>
+                <input type="number" min="0" step="1" data-tank-count="underground">
+              </label>
+
+              <label class="field field-span-1">
+                <span>Material used in underground tanks</span>
+                <input type="text" placeholder="Enter material used" data-tank-material="underground">
+              </label>
+
+              <label class="field field-span-1">
+                <span>Total storage capacity of underground tanks</span>
+                <input type="text" placeholder="Auto calculated" data-tank-total="underground" readonly>
+              </label>
+            </div>
+
+            <div class="engineering-table-wrap tank-table-wrap">
+              <table class="engineering-table engineering-table--tank">
+                <thead>
+                  <tr>
+                    <th>Tank</th>
+                    <th>Depth</th>
+                    <th>Width</th>
+                    <th>Length</th>
+                    <th>Capacity (D x W x L)</th>
+                  </tr>
+                </thead>
+                <tbody data-tank-body="underground">
+                  <tr>
+                    <td colspan="5" class="submitted-table__empty">Enter the number of underground tanks to generate rows.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="tank-section" data-tank-section="overhead">
+            <div class="section-header section-header-compact engineering-block-title">
+              <h3>Question 5. Overhead Tank</h3>
+              <p class="tank-section__hint">This question is enabled only if <strong>Overhead tank</strong> was selected in SEAF facilities.</p>
+            </div>
+
+            <div class="assessment-grid">
+              <label class="field field-span-1">
+                <span>Number of overhead tanks</span>
+                <input type="number" min="0" step="1" data-tank-count="overhead">
+              </label>
+
+              <label class="field field-span-1">
+                <span>Material used in overhead tanks</span>
+                <input type="text" placeholder="Enter material used" data-tank-material="overhead">
+              </label>
+
+              <label class="field field-span-1">
+                <span>Total storage capacity of overhead tanks</span>
+                <input type="text" placeholder="Auto calculated" data-tank-total="overhead" readonly>
+              </label>
+            </div>
+
+            <div class="engineering-table-wrap tank-table-wrap">
+              <table class="engineering-table engineering-table--tank">
+                <thead>
+                  <tr>
+                    <th>Tank</th>
+                    <th>Depth</th>
+                    <th>Width</th>
+                    <th>Length</th>
+                    <th>Capacity (D x W x L)</th>
+                  </tr>
+                </thead>
+                <tbody data-tank-body="overhead">
+                  <tr>
+                    <td colspan="5" class="submitted-table__empty">Enter the number of overhead tanks to generate rows.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <div class="section-header section-header-compact engineering-block-title">
+            <h3>Question 6. Proposed storage capacity of tanks</h3>
+            <p>Select the proposed storage capacity for the RWH Unit tanks.</p>
+          </div>
+
+          <label class="field engineering-block">
+            <span>Proposed storage capacity of tanks</span>
+            <select data-proposed-storage-capacity>
+              <option value="" selected disabled hidden>Select capacity</option>
+              <option>800 liters</option>
+              <option>1000 liters</option>
+              <option>1200 liters</option>
+              <option>1500 liters</option>
+              <option>2000 liters</option>
+            </select>
+          </label>
+
+          <div class="section-header section-header-compact engineering-block-title">
+            <h3>Question 7. The house is not appropriate for RWHU</h3>
+            <p>If such is the case, please briefly enlist the reasons for rejection.</p>
+          </div>
+
+          <label class="field engineering-block">
+            <span>Reasons for rejection</span>
+            <textarea rows="6" placeholder="Write the reasons for rejection here"></textarea>
+          </label>
+
+          <div class="section-header section-header-compact engineering-block-title">
+            <h3>Question 8. Calculating household's water need and determining required storage capacity</h3>
+            <p>Calculation of rainwater that can potentially be harvested through available catchment area/s.</p>
+          </div>
+
+          <div class="engineering-table-wrap">
+            <table class="engineering-table engineering-table--calc">
+              <colgroup>
+                <col style="width: 56%">
+                <col style="width: 44%">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Calculations</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    Total available area (in square feet) that is exposed to rainwater and can act as catchment area (A)
+                    <small class="engineering-note">Calculated from Question 1 housing structure dimensions.</small>
+                  </td>
+                  <td class="engineering-calc-cell">
+                    <div class="engineering-calc-line">
+                      <span>A =</span>
+                      <input type="text" data-water-need-area readonly>
+                      <span>Square feet</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Convert area (A) into three dimensional space assuming 01" (0.083 ft.) of rain has fallen (S)
+                  </td>
+                  <td class="engineering-calc-cell">
+                    <div class="engineering-calc-line">
+                      <span>S = 0.083 x A =</span>
+                      <input type="text" data-water-need-space readonly>
+                      <span>Space in cubic feet</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>1 cubic feet of space can hold</td>
+                  <td class="engineering-calc-cell">
+                    <div class="engineering-calc-line">
+                      <span>28.32 liters of water</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Run-off factor</td>
+                  <td class="engineering-calc-cell">
+                    <div class="engineering-calc-line">
+                      <span>0.9</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Quantity of rainwater that can be harvested (Q)</td>
+                  <td class="engineering-calc-cell">
+                    <div class="engineering-calc-line">
+                      <span>Q =</span>
+                      <input type="text" data-water-need-quantity readonly>
+                      <span>Liters</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Household / Family size (H)
+                    <small class="engineering-note">Enter the number of persons in the household.</small>
+                  </td>
+                  <td class="engineering-calc-cell">
+                    <div class="engineering-calc-line">
+                      <span>H =</span>
+                      <input type="number" min="0" step="1" placeholder="Persons" data-water-need-household-size>
+                      <span>Persons</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Water requirement per person/day (R)</td>
+                  <td class="engineering-calc-cell">
+                    <div class="engineering-calc-line">
+                      <span>50 liters</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Daily water requirement of the family or household</td>
+                  <td class="engineering-calc-cell">
+                    <div class="engineering-calc-line">
+                      <span>R = H x 50 liters =</span>
+                      <input type="text" data-water-need-daily readonly>
+                      <span>Liters</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Required storage capacity at least for 07 days (C)</td>
+                  <td class="engineering-calc-cell">
+                    <div class="engineering-calc-line">
+                      <span>C = R x 7 =</span>
+                      <input type="text" data-water-need-storage readonly>
+                      <span>Liters</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p class="helper-text" data-engineering-feedback aria-live="polite"></p>
+        </form>
+      </div>
+
+      <div class="form-actions">
+        <a class="button button-muted" href="index.html">Cancel</a>
+        <button class="button button-primary" type="button" data-engineering-submit>Submit</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

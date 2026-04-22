@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shehersaaz Admin Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../assets/css/admin.css">
+  <script src="../../assets/js/admin.js" defer></script>
+</head>
+<body class="admin-auth-shell">
+  <main class="admin-auth">
+    <section class="admin-auth__intro">
+      <div class="admin-brand">
+        <img src="../../assets/images/Shehersaaz Logo Update 2025.png" alt="Shehersaaz Logo">
+        <div>
+          <p>Shehersaaz</p>
+          <h1>Admin Dashboard</h1>
+        </div>
+      </div>
+
+      <h2>Secure control room for assessment records</h2>
+      <p>
+        Review household progress, submission statuses, and operational activity from one private admin workspace.
+      </p>
+
+      <div class="admin-auth__notes">
+        <div class="admin-note">
+          <strong>Connected to forms</strong>
+          <span>Reads the assessment status data from the browser storage used by the forms.</span>
+        </div>
+        <div class="admin-note">
+          <strong>Admin only</strong>
+          <span>Access is protected by a dedicated admin login.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="admin-auth__card">
+      <div>
+        <p class="admin-kicker">Admin Login</p>
+        <h2>Sign in to continue</h2>
+        <p class="admin-muted">Use the admin credentials to open the dashboard.</p>
+      </div>
+
+      <form class="admin-form" data-admin-login-form>
+        <label>
+          <span>Email</span>
+          <input type="email" name="email" placeholder="admin@shehersaaz.com" autocomplete="username" required>
+        </label>
+
+        <label>
+          <span>Password</span>
+          <input type="password" name="password" placeholder="Enter password" autocomplete="current-password" required>
+        </label>
+
+        <button type="submit" class="admin-button">Login</button>
+        <p class="admin-feedback" data-admin-feedback aria-live="polite"></p>
+      </form>
+
+      <div class="admin-credentials">
+        <p><strong>Demo access for now</strong></p>
+        <p>Email: <code>admin@shehersaaz.com</code></p>
+        <p>Password: <code>Admin@2025</code></p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Household Information</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <script src="../assets/js/forms.js" defer></script>
+</head>
+<body class="site-shell">
+  <main class="form-page">
+    <section class="form-card">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">Assessment module 1</p>
+          <h1> Basic Household Information</h1>
+        </div>
+        <a class="back-link" href="index.html">Back to home</a>
+      </div>
+
+      <div class="step-tabs" role="tablist" aria-label="Household Information steps">
+        <button class="step-tab is-active" type="button" data-step-tab="household">Household Information</button>
+        <button class="step-tab" type="button" data-step-tab="respondant">Respondant Information</button>
+      </div>
+
+      <div class="form-body">
+        <form data-household-form novalidate>
+          <section class="step-panel is-active" data-step-panel="household">
+            <div class="section-header">
+              <h2>Household Information</h2>
+              <p>Complete this first screening step to confirm whether the household qualifies to proceed to the next stage of assessment.Eligibility for Rainwater Harvesting Unit installation will be assessed automatically based on the entered catchment area.</p>
+            </div>
+
+            <div class="assessment-grid">
+              <label class="field field-span-1">
+                <span>Household ID<span class="required">*</span></span>
+                <input type="text" placeholder="" data-household-id readonly required>
+              </label>
+
+              <label class="field field-span-1">
+                <span>Survey Date<span class="required">*</span></span>
+                <input type="date" placeholder="" data-survey-date readonly required>
+              </label>
+
+              <label class="field field-span-1">
+                <span>Location of Household</span>
+                <input type="text" placeholder="Capture exact coordinates here" data-household-location>
+              </label>
+
+              <div class="field-group field-span-2">
+                <span>Place of Interview<span class="required">*</span></span>
+                <div class="field-cluster field-cluster-3">
+                  <label class="field compact field-subitem">
+                    <select data-city-select aria-label="Place of Interview City" required>
+                      <option value="" selected disabled hidden>Select city</option>
+                      <option value="Rawalpindi">Rawalpindi</option>
+                      <option value="Nowshera">Nowshera</option>
+                    </select>
+                  </label>
+                  <label class="field compact field-subitem">
+                    <select data-ucnc-select aria-label="Place of Interview UC or NC" required>
+                      <option value="" selected disabled hidden>Select UC/NC</option>
+                    </select>
+                  </label>
+                  <label class="field compact field-subitem">
+                    <input type="text" placeholder="Address" aria-label="Place of Interview Address" data-interview-address required>
+                  </label>
+                </div>
+              </div>
+
+              <label class="field field-span-1">
+                <span>Full Name of Enumerator / CMO<span class="required">*</span></span>
+                <select data-enumerator-select required>
+                  <option value="" selected disabled hidden>Select CMO</option>
+                </select>
+              </label>
+
+              <label class="field field-span-1">
+                <span>Catchment Area<span class="required">*</span></span>
+                <select data-catchment-area required>
+                  <option value="" selected disabled hidden>Select option</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </label>
+
+              <label class="field field-span-1">
+                <span>Tank Space<span class="required">*</span></span>
+                <select data-tank-space required>
+                  <option value="" selected disabled hidden>Select option</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="step-panel" data-step-panel="respondant" hidden>
+            <div class="section-header">
+              <h2>Respondant Information</h2>
+              <p>Add the respondent-related questions here. Required fields will be validated before submission.</p>
+            </div>
+
+            <p class="helper-text form-feedback-success" data-eligibility-inline-message hidden>
+              This household is eligible for Rainwater Harvesting Unit installation.
+            </p>
+
+            <div class="assessment-grid">
+              <label class="field field-span-1">
+                <span>Is the Respondant the Household Head?<span class="required">*</span></span>
+                <select data-respondant-head-select required>
+                  <option value="" selected disabled hidden>Select option</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </label>
+            </div>
+
+            <section class="conditional-section" data-head-info-section hidden>
+              <div class="section-header section-header-compact">
+                <h3>Household Head Information</h3>
+              </div>
+
+              <div class="assessment-grid">
+                <label class="field field-span-1">
+                  <span>Household Head CNIC<span class="required">*</span></span>
+                  <input
+                    type="text"
+                    placeholder="12345-1234567-1"
+                    inputmode="numeric"
+                    maxlength="15"
+                    pattern="[0-9]{5}-[0-9]{7}-[0-9]{1}"
+                    title="Enter CNIC in the format 12345-1234567-1"
+                    data-head-cnic
+                  >
+                </label>
+
+                <label class="field field-span-1">
+                  <span>Full Name of Head<span class="required">*</span></span>
+                  <input type="text" data-head-name>
+                </label>
+              </div>
+            </section>
+
+            <section class="conditional-section" data-respondant-details-section hidden>
+              <div class="section-header section-header-compact">
+                <h3>Respondant Information</h3>
+              </div>
+
+              <div class="assessment-grid">
+                <label class="field field-span-1" data-relationship-to-head-field hidden>
+                  <span>Relationship to the Head<span class="required">*</span></span>
+                  <select data-relationship-to-head>
+                    <option value="" selected disabled hidden>Select relationship</option>
+                    <option value="Wife">Wife</option>
+                    <option value="Daughter">Daughter</option>
+                    <option value="Son">Son</option>
+                    <option value="Sibling">Sibling</option>
+                    <option value="Tenant">Tenant</option>
+                  </select>
+                </label>
+
+                <label class="field field-span-1">
+                  <span>Respondant CNIC<span class="required">*</span></span>
+                  <input
+                    type="text"
+                    placeholder="12345-1234567-1"
+                    inputmode="numeric"
+                    maxlength="15"
+                    pattern="[0-9]{5}-[0-9]{7}-[0-9]{1}"
+                    title="Enter CNIC in the format 12345-1234567-1"
+                    data-respondant-cnic
+                    required
+                  >
+                </label>
+
+                <label class="field field-span-1">
+                  <span>Respondant Name<span class="required">*</span></span>
+                  <input type="text" placeholder="" data-respondant-name required>
+                </label>
+
+                <label class="field field-span-1">
+                  <span>Respondant Phone Number<span class="required">*</span></span>
+                  <input type="tel" placeholder="" data-respondant-phone inputmode="numeric" maxlength="11" pattern="[0-9]{11}" title="Enter exactly 11 digits" required>
+                </label>
+
+                <label class="field field-span-1">
+                  <span>Gender<span class="required">*</span></span>
+                  <select data-respondant-gender required>
+                    <option value="">Select gender</option>
+                    <option>Man</option>
+                    <option>Woman</option>
+                  </select>
+                </label>
+
+                <label class="field field-span-1">
+                  <span>Age<span class="required">*</span></span>
+                  <input type="number" placeholder="" required>
+                </label>
+              </div>
+            </section>
+          </section>
+
+          <p class="helper-text" data-form-feedback aria-live="polite">
+            Household ID and Survey Date are filled automatically.
+          </p>
+        </form>
+      </div>
+
+      <div class="form-actions">
+        <a class="button button-muted" href="index.html">Cancel</a>
+        <button class="button button-primary" type="button" data-household-continue>Continue</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Socioeconomic Assessment</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <script src="../assets/js/forms.js" defer></script>
+</head>
+<body class="site-shell">
+  <main class="form-page">
+    <section class="form-card">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">Assessment module 2</p>
+          <h1>Socioeconomic Assessment</h1>
+        </div>
+        <a class="back-link" href="index.html">Back to home</a>
+      </div>
+
+      <div class="step-tabs socioeconomic-tabs" role="tablist" aria-label="Socioeconomic Assessment parts">
+        <button class="step-tab is-active" type="button" data-socio-tab="housing">Housing Related Information</button>
+        <button class="step-tab" type="button" data-socio-tab="demographics">Demographics</button>
+        <button class="step-tab" type="button" data-socio-tab="utilities">Utilities and Amenities</button>
+        <button class="step-tab" type="button" data-socio-tab="urban">Urban Agriculture, Forestry and Streetscape</button>
+        <button class="step-tab" type="button" data-socio-tab="flooding">Flooding</button>
+      </div>
+
+      <div class="form-body">
+        <p class="helper-text selected-household-summary" data-selected-household-summary hidden></p>
+
+        <form class="socioeconomic-shell" data-socioeconomic-form novalidate>
+          <section class="step-panel is-active" data-socio-panel="housing">
+            <div class="section-header">
+              <h2>Housing Related Information</h2>
+              <p>Record the housing profile, utility sources, structural condition, and estimated age of the dwelling.</p>
+            </div>
+
+            <div class="assessment-grid">
+              <label class="field field-span-1">
+                <span>Household ID</span>
+                <input type="text" data-selected-household-id readonly>
+              </label>
+
+              <label class="field field-span-1">
+                <span>Selected Household</span>
+                <input type="text" data-selected-household-name readonly>
+              </label>
+
+              <label class="field field-span-1">
+                <span>1.1 How many households live in this dwelling?</span>
+                <input type="number" min="1">
+              </label>
+
+              <div class="field-group field-span-2">
+                <span>1.2 Number of floors and rooms</span>
+                <div class="field-cluster">
+                  <label class="field compact field-subitem">
+                    <input type="number" min="0" placeholder="Number of floors">
+                  </label>
+                  <label class="field compact field-subitem">
+                    <input type="number" min="0" placeholder="Number of rooms">
+                  </label>
+                </div>
+              </div>
+
+              <label class="field field-span-1">
+                <span>1.3 Source of Electricity</span>
+                <select>
+                  <option value="" selected disabled hidden>Select source</option>
+                  <option>Electricity Meter</option>
+                  <option>Off grid solar</option>
+                  <option>NG+solar</option>
+                  <option>Connection from neighbour</option>
+                  <option>Others</option>
+                </select>
+              </label>
+
+              <label class="field field-span-1">
+                <span>1.4 Fuel used for cooking and heating</span>
+                <select>
+                  <option value="" selected disabled hidden>Select fuel</option>
+                  <option>Natural Gas</option>
+                  <option>LPG</option>
+                  <option>Fuel wood</option>
+                  <option>Crop residue</option>
+                  <option>Cow dung</option>
+                  <option>Kerosene oil</option>
+                  <option>Others</option>
+                </select>
+              </label>
+
+              <div class="field-group field-span-2">
+                <span>1.5 Type of housing structure and roof</span>
+                <div class="field-cluster">
+                  <label class="field compact field-subitem">
+                    <select aria-label="Housing structure">
+                      <option value="" selected disabled hidden>Housing structure</option>
+                      <option>Katcha</option>
+                      <option>Pacca</option>
+                      <option>Katcha+Pacca</option>
+                    </select>
+                  </label>
+                  <label class="field compact field-subitem">
+                    <select aria-label="Roof type">
+                      <option value="" selected disabled hidden>Roof type</option>
+                      <option>Katcha</option>
+                      <option>Pacca</option>
+                      <option>Katcha+Pacca</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+            </div>
+          </section>
+
+          <section class="step-panel" data-socio-panel="demographics" hidden>
+            <div class="section-header">
+              <h2>Demographics</h2>
+              <p>Add each person living in the household with their gender, literacy level, and employment status.</p>
+            </div>
+
+            <div class="repeatable-header">
+              <p class="helper-text helper-text-inline">Section 2 records all persons living in the house. Use the button below to add one entry per person.</p>
+              <button class="button button-inline" type="button" data-add-person>Add person</button>
+            </div>
+
+            <div class="repeatable-list" data-person-list>
+              <article class="repeatable-card">
+                <div class="assessment-grid repeatable-grid">
+                  <label class="field field-span-1">
+                    <span>Gender</span>
+                    <select>
+                      <option value="" selected disabled hidden>Select gender</option>
+                      <option>Man</option>
+                      <option>Woman</option>
+                    </select>
+                  </label>
+
+                  <label class="field field-span-1">
+                    <span>Literacy level</span>
+                    <select>
+                      <option value="" selected disabled hidden>Select literacy level</option>
+                      <option>Illiterate</option>
+                      <option>Primary</option>
+                      <option>Middle</option>
+                      <option>Matric</option>
+                      <option>Inter</option>
+                      <option>Diploma</option>
+                      <option>Graduate</option>
+                      <option>Masters</option>
+                      <option>M.Phil.</option>
+                      <option>Ph.D.</option>
+                      <option>P.Doc.</option>
+                    </select>
+                  </label>
+
+                  <label class="field field-span-1">
+                    <span>Employment status</span>
+                    <select>
+                      <option value="" selected disabled hidden>Select employment status</option>
+                      <option>Employed</option>
+                      <option>Unemployed</option>
+                    </select>
+                  </label>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="step-panel" data-socio-panel="utilities" hidden>
+            <div class="section-header">
+              <h2>Utilities and Amenities</h2>
+              <p>Capture access to basic utilities, in-house facilities, water sources, water sufficiency, and sanitation conditions.</p>
+            </div>
+
+            <div class="section-header section-header-compact">
+              <h3>3.1 Basic Utilities</h3>
+            </div>
+            <div class="checkbox-grid checkbox-grid--stacked">
+              <label class="checkbox-card"><input type="checkbox" value="Landline"> Landline</label>
+              <label class="checkbox-card"><input type="checkbox" value="Electricity"> Electricity</label>
+              <label class="checkbox-card"><input type="checkbox" value="Natural Gas"> Natural Gas</label>
+            </div>
+
+            <div class="section-header section-header-compact">
+              <h3>3.2 Facilities inside house</h3>
+            </div>
+            <div class="checkbox-grid checkbox-grid--stacked" data-facility-list>
+              <label class="checkbox-card"><input type="checkbox" value="Toilet"> Toilet</label>
+              <label class="checkbox-card"><input type="checkbox" value="Kitchen"> Kitchen</label>
+              <label class="checkbox-card"><input type="checkbox" value="Overhead tank"> Overhead tank</label>
+              <label class="checkbox-card"><input type="checkbox" value="Water filter"> Water filter</label>
+              <label class="checkbox-card"><input type="checkbox" value="Underground tank"> Underground tank</label>
+              <label class="checkbox-card"><input type="checkbox" value="Sanitation"> Sanitation</label>
+              <label class="checkbox-card"><input type="checkbox" value="Sewer"> Sewer</label>
+            </div>
+
+            <div class="section-header section-header-compact">
+              <h3>3.3 Source, quality and quantity of water</h3>
+            </div>
+            <div class="checkbox-grid checkbox-grid--stacked">
+              <label class="checkbox-card"><input type="checkbox" value="Municipal water supply"> Source of water inside house: Municipal water supply</label>
+              <label class="checkbox-card"><input type="checkbox" value="Hand pump"> Source of water inside house: Hand pump</label>
+              <label class="checkbox-card"><input type="checkbox" value="Borehole"> Source of water inside house: Borehole</label>
+              <label class="checkbox-card"><input type="checkbox" value="Protected well"> Source of water inside house: Protected well</label>
+              <label class="checkbox-card"><input type="checkbox" value="Unprotected well"> Source of water inside house: Unprotected well</label>
+              <label class="checkbox-card"><input type="checkbox" value="RWH"> Source of water inside house: RWH</label>
+              <label class="checkbox-card"><input type="checkbox" value="Other"> Source of water inside house: Other</label>
+              <label class="checkbox-card"><input type="checkbox" value="Water filteration plant"> Source of water outside house: Water filteration plant</label>
+              <label class="checkbox-card"><input type="checkbox" value="Water vendor"> Source of water outside house: Water vendor</label>
+              <label class="checkbox-card"><input type="checkbox" value="From neighbour"> Source of water outside house: From neighbour</label>
+              <label class="checkbox-card"><input type="checkbox" value="Hand pump"> Source of water outside house: Hand pump</label>
+              <label class="checkbox-card"><input type="checkbox" value="Borehole"> Source of water outside house: Borehole</label>
+              <label class="checkbox-card"><input type="checkbox" value="Tube well"> Source of water outside house: Tube well</label>
+              <label class="checkbox-card"><input type="checkbox" value="Canal/River/Pond"> Source of water outside house: Canal/River/Pond</label>
+              <label class="checkbox-card"><input type="checkbox" value="Spring"> Source of water outside house: Spring</label>
+              <label class="checkbox-card"><input type="checkbox" value="Others"> Source of water outside house: Others</label>
+            </div>
+
+            <div class="assessment-grid">
+              <label class="field field-span-1">
+                <span>Quantity of water</span>
+                <select>
+                  <option value="" selected disabled hidden>Select quantity</option>
+                  <option>Not sufficient</option>
+                  <option>Sufficient</option>
+                  <option>More than sufficient</option>
+                </select>
+              </label>
+
+              <label class="field field-span-1">
+                <span>Quality of water</span>
+                <select>
+                  <option value="" selected disabled hidden>Select quality</option>
+                  <option>Poor</option>
+                  <option>Fair</option>
+                  <option>Good</option>
+                  <option>Excellent</option>
+                  <option>Do not know</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="section-header section-header-compact">
+              <h3>3.4 Sanitation</h3>
+            </div>
+            <div class="assessment-grid">
+              <label class="field field-span-1">
+                <span>HH Solid waste disposal</span>
+                <input type="text" placeholder="Enter short text">
+              </label>
+
+              <label class="field field-span-1">
+                <span>Street sewers</span>
+                <select>
+                  <option value="" selected disabled hidden>Select street sewer type</option>
+                  <option>Sanitation</option>
+                  <option>Covered</option>
+                  <option>Underground</option>
+                </select>
+              </label>
+
+              <label class="field field-span-1">
+                <span>Cleanliness of streets</span>
+                <input type="text" placeholder="Enter short text">
+              </label>
+            </div>
+          </section>
+
+          <section class="step-panel" data-socio-panel="urban" hidden>
+            <div class="section-header">
+              <h2>Urban Agriculture, Forestry and Streetscape</h2>
+              <p>Record the presence of trees, plants, and available planting space on the street and within the house premises.</p>
+            </div>
+
+            <div class="section-header section-header-compact">
+              <h3>4.1 Are there trees or plants in the street?</h3>
+            </div>
+            <div class="checkbox-grid">
+              <label class="checkbox-card"><input type="checkbox"> No trees in the street</label>
+              <label class="checkbox-card"><input type="checkbox"> No plants in the street</label>
+              <label class="checkbox-card"><input type="checkbox"> There are trees in the street</label>
+              <label class="checkbox-card"><input type="checkbox"> There are plants in the street</label>
+              <label class="checkbox-card"><input type="checkbox"> No space available to grow trees in the street</label>
+              <label class="checkbox-card"><input type="checkbox"> No space available to place/grow plants in street</label>
+              <label class="checkbox-card"><input type="checkbox"> Space is available to grow trees</label>
+              <label class="checkbox-card"><input type="checkbox"> Space is available to grow/place plants in street</label>
+            </div>
+
+            <div class="section-header section-header-compact">
+              <h3>4.2 Kitchen, front or backyard, or rooftop gardening</h3>
+            </div>
+            <div class="checkbox-grid">
+              <label class="checkbox-card"><input type="checkbox"> No tree/s in the house</label>
+              <label class="checkbox-card"><input type="checkbox"> No plants in the house</label>
+              <label class="checkbox-card"><input type="checkbox"> There are flower plants in the house</label>
+              <label class="checkbox-card"><input type="checkbox"> There are vegetable plants in the house</label>
+              <label class="checkbox-card"><input type="checkbox"> No space available to grow trees in the house</label>
+              <label class="checkbox-card"><input type="checkbox"> No space to grow vegetables in the house</label>
+              <label class="checkbox-card"><input type="checkbox"> Space is available to grow trees in the house</label>
+              <label class="checkbox-card"><input type="checkbox"> Space is available to grow/place plants in house</label>
+            </div>
+          </section>
+
+          <section class="step-panel" data-socio-panel="flooding" hidden>
+            <div class="section-header">
+              <h2>Flooding</h2>
+              <p>Record whether the dwelling has ever been affected by flooding.</p>
+            </div>
+
+            <div class="assessment-grid">
+              <label class="field field-span-1">
+                <span>5.1 Has the house/dwelling ever been affected by flooding?</span>
+                <select>
+                  <option value="" selected disabled hidden>Select option</option>
+                  <option>Yes</option>
+                  <option>No</option>
+                  <option>Do not know</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+        </form>
+      </div>
+
+      <div class="form-actions">
+        <a class="button button-muted" href="index.html">Cancel</a>
+        <button class="button button-primary" type="button" data-socio-continue>Continue</button>
+      </div>
+    </section>
+  </main>
+
+  <template data-person-template>
+    <article class="repeatable-card">
+      <div class="repeatable-card__actions">
+        <button class="button button-inline button-remove" type="button" data-remove-item>Remove</button>
+      </div>
+      <div class="assessment-grid repeatable-grid">
+        <label class="field field-span-1">
+          <span>Gender</span>
+          <select>
+            <option value="" selected disabled hidden>Select gender</option>
+            <option>Male</option>
+            <option>Female</option>
+            <option>Transgender</option>
+            <option>Prefer not to say</option>
+          </select>
+        </label>
+
+        <label class="field field-span-1">
+          <span>Literacy level</span>
+          <select>
+            <option value="" selected disabled hidden>Select literacy level</option>
+            <option>Illiterate</option>
+            <option>Primary</option>
+            <option>Middle</option>
+            <option>Matric</option>
+            <option>Inter</option>
+            <option>Diploma</option>
+            <option>Graduate</option>
+            <option>Masters</option>
+            <option>M.Phil.</option>
+            <option>Ph.D.</option>
+            <option>P.Doc.</option>
+          </select>
+        </label>
+
+        <label class="field field-span-1">
+          <span>Employment status</span>
+          <select>
+            <option value="" selected disabled hidden>Select employment status</option>
+            <option>Employed</option>
+            <option>Unemployed</option>
+          </select>
+        </label>
+      </div>
+    </article>
+  </template>
+
+  <template data-utility-template>
+    <article class="repeatable-card repeatable-card--compact">
+      <div class="repeatable-card__actions">
+        <button class="button button-inline button-remove" type="button" data-remove-item>Remove</button>
+      </div>
+      <div class="assessment-grid repeatable-grid repeatable-grid--compact">
+        <label class="field field-span-1">
+          <span>Basic utility</span>
+          <select>
+            <option value="" selected disabled hidden>Select utility</option>
+            <option>Landline</option>
+            <option>Electricity</option>
+            <option>Natural Gas</option>
+          </select>
+        </label>
+      </div>
+    </article>
+  </template>
+
+  <template data-facility-template>
+    <article class="repeatable-card repeatable-card--compact">
+      <div class="repeatable-card__actions">
+        <button class="button button-inline button-remove" type="button" data-remove-item>Remove</button>
+      </div>
+      <div class="assessment-grid repeatable-grid repeatable-grid--compact">
+        <label class="field field-span-1">
+          <span>Facility inside house</span>
+          <select>
+            <option value="" selected disabled hidden>Select facility</option>
+            <option>Toilet</option>
+            <option>Kitchen</option>
+            <option>Overhead tank</option>
+            <option>Water filter</option>
+            <option>Underground tank</option>
+            <option>Sanitation</option>
+            <option>Sewer</option>
+          </select>
+        </label>
+      </div>
+    </article>
+  </template>
+</body>
+</html>

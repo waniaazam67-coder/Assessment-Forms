@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assessment Forms</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/forms.css">
+  <script src="../assets/js/forms.js" defer></script>
+</head>
+<body class="site-shell">
+  <main class="home-page">
+    <section class="brand-strip" aria-label="Partner logos">
+      <img src="../assets/images/UN-Habitat Logo Vector.png" alt="UN-Habitat logo" class="brand-logo">
+      <img src="../assets/images/Adaptation Fund Logo Final Tr.png" alt="Adaptation Fund logo" class="brand-logo">
+      <img src="../assets/images/Shehersaaz Logo Update 2025.png" alt="Shehersaaz logo" class="brand-logo brand-logo-shehersaaz">
+    </section>
+
+    <section class="hero-card">
+      <div class="hero-copy">
+        <h1>Assessment Forms</h1>
+        <p class="hero-text">
+          Select an assessment module to begin. Each form follows the same clean multi-step layout,
+          so you can add your own questions and fields later without redesigning the experience.
+        </p>
+        <button class="manual-button" type="button" data-open-manual>User Manual</button>
+      </div>
+    </section>
+
+    <section class="form-grid" aria-label="Assessment modules">
+      <a class="form-tile" href="household-information.html">
+        <span class="tile-step tile-step-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 10.5 12 3l9 7.5" />
+            <path d="M5 9.5V21h14V9.5" />
+            <path d="M10 21v-6h4v6" />
+          </svg>
+        </span>
+        <h2>Household Information</h2>
+        <p>Start with family profile, address, and household composition details.</p>
+        <span class="tile-link">Open form</span>
+      </a>
+
+      <a class="form-tile" href="socioeconomic-assessment.html" data-household-picker-link>
+        <span class="tile-step tile-step-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="8" r="3" />
+            <circle cx="17" cy="7" r="2.5" />
+            <path d="M3.5 19a5 5 0 0 1 9 0" />
+            <path d="M13.5 18a4.5 4.5 0 0 1 7 0" />
+          </svg>
+        </span>
+        <h2>Socioeconomic Assessment</h2>
+        <p>Capture income, employment, expenses, vulnerability, and support indicators.</p>
+        <span class="tile-link">Open form</span>
+      </a>
+
+      <a class="form-tile" href="engineering-assessment.html" data-household-picker-link>
+        <span class="tile-step tile-step-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.5 4.5a4 4 0 0 1 5 5L10 19l-5 1 1-5 9.5-10.5Z" />
+            <path d="m13 6 5 5" />
+          </svg>
+        </span>
+        <h2>Engineering Assessment</h2>
+        <p>Review site conditions, damage observations, measurements, and technical notes.</p>
+        <span class="tile-link">Open form</span>
+      </a>
+
+        <a class="form-tile" href="inventory.html" data-household-picker-link>
+        <span class="tile-step tile-step-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3 20 7.5 12 12 4 7.5 12 3Z" />
+            <path d="M4 7.5V16.5L12 21l8-4.5v-9" />
+            <path d="M12 12v9" />
+          </svg>
+        </span>
+        <h2>Inventory</h2>
+        <p>Log items, quantities, issue status, stock movement, and related remarks.</p>
+        <span class="tile-link">Open form</span>
+      </a>
+
+      <button class="form-tile form-tile-button" type="button" data-open-submitted-forms>
+        <span class="tile-step tile-step-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 3h6" />
+            <path d="M10 7h4" />
+            <rect x="5" y="4" width="14" height="17" rx="2" />
+            <path d="m9 14 2 2 4-4" />
+          </svg>
+        </span>
+        <h2>Submitted Forms</h2>
+        <p>Review household-wise status for SEAF, Engineering form, and Inventory form submissions.</p>
+        <span class="tile-link">View records</span>
+      </button>
+    </section>
+  </main>
+
+  <dialog class="manual-dialog" data-manual-dialog aria-labelledby="manual-title">
+    <div class="manual-dialog__header">
+      <div>
+        <p class="manual-dialog__eyebrow">Guide</p>
+        <h2 id="manual-title">How To Use These Forms</h2>
+      </div>
+      <button class="manual-dialog__close" type="button" data-close-manual aria-label="Close user manual">×</button>
+    </div>
+
+      <div class="manual-dialog__body">
+        <p>
+          1. Select a household before opening any form.
+        </p>
+        <p>
+          2. Complete the four forms in order: Household Information, SEAF, Engineering Assessment, and Inventory.
+          Each form is linked to the same household ID.
+        </p>
+        <p>
+          3. Enter the CNIC correctly and fill all required fields before submitting.
+        </p>
+        <p>
+          4. All calculation fields are completed automatically from the values you enter.
+        </p>
+        <p>
+          5. After submitting the final form, the household will move to Submitted Forms and will no longer appear
+          in the active household list.
+        </p>
+      </div>
+    </dialog>
+
+  <dialog class="manual-dialog submitted-dialog" data-submitted-forms-dialog aria-labelledby="submitted-forms-title">
+    <div class="manual-dialog__header">
+      <div>
+        <p class="manual-dialog__eyebrow">Tracker</p>
+        <h2 id="submitted-forms-title">Submitted Forms</h2>
+      </div>
+      <button class="manual-dialog__close" type="button" data-close-submitted-forms aria-label="Close submitted forms">&times;</button>
+    </div>
+
+    <div class="manual-dialog__body submitted-dialog__body">
+      <p class="household-picker-copy">This panel shows the form status for each household.</p>
+      <div class="submitted-table-wrap">
+        <table class="submitted-table">
+          <thead>
+            <tr>
+              <th>Household ID</th>
+              <th>Head Name</th>
+              <th>SEAF</th>
+              <th>Engineering Form</th>
+              <th>Inventory Form</th>
+            </tr>
+          </thead>
+          <tbody data-submitted-forms-body></tbody>
+        </table>
+      </div>
+    </div>
+  </dialog>
+</body>
+</html>

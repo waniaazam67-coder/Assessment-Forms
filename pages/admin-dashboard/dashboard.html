@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assessment Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../assets/css/admin.css">
+  <script src="../../assets/js/admin.js" defer></script>
+</head>
+<body class="admin-shell">
+  <main class="admin-layout">
+    <aside class="admin-sidebar">
+      <div class="admin-brand admin-brand--sidebar">
+        <img src="../../assets/images/Shehersaaz Logo Update 2025.png" alt="Shehersaaz Logo">
+        <div>
+          <p>Shehersaaz</p>
+        </div>
+      </div>
+
+      <nav class="admin-nav">
+        <a href="#overview" class="admin-nav__link is-active">Overview</a>
+        <a href="#households" class="admin-nav__link">Households</a>
+        <a href="#data-tables" class="admin-nav__link">Data tables</a>
+        <a href="#access" class="admin-nav__link">Access</a>
+      </nav>
+
+      <div class="admin-sidebar__footer">
+        <a class="admin-button admin-button--ghost" href="../index.html">Open Forms Portal</a>
+        <button type="button" class="admin-button admin-button--ghost" data-admin-logout>Logout</button>
+      </div>
+    </aside>
+
+    <section class="admin-content">
+      <header class="admin-topbar">
+        <div>
+          <p class="admin-kicker">Private workspace</p>
+          <h2>Assessment Admin Dashboard</h2>
+        </div>
+        <div class="admin-topbar__user">
+          <span data-admin-user-name>Admin</span>
+          <small data-admin-user-email>admin@shehersaaz.com</small>
+        </div>
+      </header>
+
+      <section class="admin-page is-active" id="overview" data-admin-page="overview">
+        <section class="admin-metrics" data-admin-metrics></section>
+      </section>
+
+      <section class="admin-page" id="households" data-admin-page="households" hidden>
+        <article class="admin-card">
+          <div class="admin-card__header">
+            <div>
+              <h3>Households</h3>
+              <p class="admin-card__subtitle">Household records and stage summaries will live here.</p>
+            </div>
+          </div>
+          <div class="admin-placeholder">
+            This page is reserved for household-level management views.
+          </div>
+        </article>
+      </section>
+
+      <section class="admin-page" id="data-tables" data-admin-page="data-tables" hidden>
+        <article class="admin-card admin-card--full">
+          <div class="admin-card__header">
+            <div>
+              <h3>Data tables</h3>
+              <p class="admin-card__subtitle">Filter submitted households by location, status, staff, date range, and assessment stage.</p>
+            </div>
+          </div>
+          <div class="admin-filters" data-admin-filters>
+            <label class="admin-filter">
+              <span>Location</span>
+              <input type="text" placeholder="City, UC/NC, address" data-admin-filter-location>
+            </label>
+            <label class="admin-filter">
+              <span>Status</span>
+              <select data-admin-filter-status>
+                <option value="">All statuses</option>
+                <option value="passed">Passed</option>
+                <option value="failed">Failed</option>
+              </select>
+            </label>
+            <label class="admin-filter">
+              <span>CMO or Engineer</span>
+              <input type="text" placeholder="Name" data-admin-filter-name>
+            </label>
+            <label class="admin-filter">
+              <span>Start date</span>
+              <input type="date" data-admin-filter-start-date>
+            </label>
+            <label class="admin-filter">
+              <span>End date</span>
+              <input type="date" data-admin-filter-end-date>
+            </label>
+            <label class="admin-filter">
+              <span>Stage</span>
+              <select data-admin-filter-stage>
+                <option value="">All stages</option>
+                <option value="seaf">SEAF</option>
+                <option value="engineering">Engineering</option>
+                <option value="inventory">Inventory</option>
+              </select>
+            </label>
+          </div>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Household ID's</th>
+                  <th>Location</th>
+                  <th>Catchment area</th>
+                  <th>Tank space</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody data-admin-data-table-body></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="admin-page" id="access" data-admin-page="access" hidden>
+        <article class="admin-card">
+          <div class="admin-card__header">
+            <div>
+              <h3>Access</h3>
+              <p class="admin-card__subtitle">Role and access controls will be expanded here later.</p>
+            </div>
+          </div>
+          <div class="admin-placeholder">
+            Access management is not connected yet.
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+</body>
+</html>
