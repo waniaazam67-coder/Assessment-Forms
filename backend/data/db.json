@@ -1,0 +1,63 @@
+{
+  "households": [
+    {
+      "householdId": "RWHU-TAB-FBZ",
+      "surveyDate": "2026-04-22",
+      "city": "Rawalpindi",
+      "ucnc": "UC 2",
+      "address": "abc",
+      "catchmentArea": "Yes",
+      "tankSpace": "Yes",
+      "enumeratorName": "Sakina Bashir",
+      "headName": "abc",
+      "respondentName": "abc",
+      "respondentCnic": "12345-6789123-4",
+      "headCnic": "",
+      "respondentGender": "Woman",
+      "eligibilityStatus": "passed",
+      "status": "passed",
+      "cmoName": "Sakina Bashir",
+      "stageStatus": {},
+      "updatedAt": "2026-04-22T10:39:15.668Z"
+    }
+  ],
+  "submittedForms": {
+    "RWHU-TAB-FBZ": {
+      "headName": "abc",
+      "household": "Submitted",
+      "seaf": "Pending",
+      "engineering": "Pending",
+      "inventory": "Pending",
+      "updatedAt": "2026-04-22T10:39:15.668Z"
+    }
+  },
+  "seafResponses": {},
+  "formSubmissions": {
+    "RWHU-TAB-FBZ": {
+      "household": {
+        "payload": {
+          "surveyDate": "2026-04-22",
+          "city": "Rawalpindi",
+          "ucnc": "UC 2",
+          "address": "abc",
+          "catchmentArea": "Yes",
+          "tankSpace": "Yes",
+          "enumeratorName": "Sakina Bashir",
+          "headName": "abc",
+          "respondentName": "abc",
+          "respondentCnic": "12345-6789123-4",
+          "headCnic": "",
+          "respondentGender": "Woman",
+          "eligibilityStatus": "passed",
+          "householdId": "RWHU-TAB-FBZ",
+          "status": "passed",
+          "cmoName": "Sakina Bashir",
+          "stageStatus": {}
+        },
+        "submittedAt": "2026-04-22T10:39:15.668Z"
+      }
+    }
+  },
+  "generatedIds": [],
+  "updatedAt": "2026-04-22T10:39:15.668Z"
+}

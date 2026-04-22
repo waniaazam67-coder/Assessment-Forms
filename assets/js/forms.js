@@ -13,6 +13,16 @@ const submittedFormsStorageKey = "shehersaaz-submitted-forms";
 const postRedirectMessageKey = "shehersaaz-post-redirect-message";
 const seafResponsesStorageKey = "shehersaaz-seaf-responses";
 const householdRecordsStorageKey = "shehersaaz-household-records";
+const pendingSyncQueueStorageKey = "shehersaaz-pending-sync-queue";
+const backendBaseUrl = window.location.protocol === "file:" ? "http://127.0.0.1:3000" : window.location.origin;
+
+if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((error) => {
+      console.warn("Service worker registration failed:", error);
+    });
+  });
+}
 
 if (manualDialog && openManualButton && closeManualButton) {
   openManualButton.addEventListener("click", () => {
@@ -75,6 +85,94 @@ const writeHouseholdRecords = (records) => {
   localStorage.setItem(householdRecordsStorageKey, JSON.stringify(records));
 };
 
+const readPendingSyncQueue = () => {
+  try {
+    const storedQueue = localStorage.getItem(pendingSyncQueueStorageKey);
+    const parsedQueue = storedQueue ? JSON.parse(storedQueue) : [];
+    return Array.isArray(parsedQueue) ? parsedQueue : [];
+  } catch (error) {
+    return [];
+  }
+};
+
+const writePendingSyncQueue = (queue) => {
+  localStorage.setItem(pendingSyncQueueStorageKey, JSON.stringify(queue));
+};
+
+const enqueuePendingSync = (entry) => {
+  const queue = readPendingSyncQueue();
+  queue.push({
+    ...entry,
+    createdAt: entry.createdAt || new Date().toISOString(),
+  });
+  writePendingSyncQueue(queue);
+};
+
+const apiJsonRequest = async (path, options = {}) => {
+  const response = await fetch(`${backendBaseUrl}${path}`, {
+    method: options.method || "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    body: options.body,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed with status ${response.status}`);
+  }
+
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+};
+
+const flushPendingSyncQueue = async () => {
+  const queue = readPendingSyncQueue();
+  if (queue.length === 0) {
+    return;
+  }
+
+  const remaining = [];
+
+  for (const entry of queue) {
+    try {
+      await apiJsonRequest(entry.path, {
+        method: entry.method || "POST",
+        body: JSON.stringify(entry.body || {}),
+      });
+    } catch (error) {
+      remaining.push(entry);
+    }
+  }
+
+  writePendingSyncQueue(remaining);
+};
+
+const queueBackendSync = (path, body, method = "POST") => {
+  void (async () => {
+    try {
+      await apiJsonRequest(path, {
+        method,
+        body: JSON.stringify(body || {}),
+      });
+    } catch (error) {
+      enqueuePendingSync({
+        path,
+        method,
+        body,
+      });
+    }
+  })();
+};
+
+window.addEventListener("online", () => {
+  void flushPendingSyncQueue();
+});
+
+window.setTimeout(() => {
+  void flushPendingSyncQueue();
+}, 0);
+
 const getHouseholdRecordById = (householdId) => {
   if (!householdId) {
     return null;
@@ -105,6 +203,10 @@ const upsertHouseholdRecord = (householdId, patch = {}) => {
   }
 
   writeHouseholdRecords(records);
+  queueBackendSync("/api/households", {
+    householdId,
+    ...nextRecord,
+  });
   return nextRecord;
 };
 
@@ -257,7 +359,7 @@ const writeSeafResponses = (data) => {
   localStorage.setItem(seafResponsesStorageKey, JSON.stringify(data));
 };
 
-const setSubmittedFormStatus = (householdId, formKey, status = "Submitted") => {
+const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", syncOptions = {}) => {
   if (!householdId) {
     return;
   }
@@ -283,6 +385,13 @@ const setSubmittedFormStatus = (householdId, formKey, status = "Submitted") => {
       engineering: submittedForms[householdId].engineering,
       inventory: submittedForms[householdId].inventory,
     },
+  });
+  queueBackendSync(`/api/forms/${formKey}/submit`, {
+    householdId,
+    headName: currentHeadName || existing.headName || "",
+    status,
+    payload: syncOptions.payload || {},
+    householdPatch: syncOptions.householdPatch || {},
   });
 
   if (isHouseholdFullySubmitted(submittedForms[householdId])) {
@@ -622,6 +731,32 @@ if (inventoryForm) {
     });
   }
 
+  const collectInventorySubmissionPayload = () => {
+    const otherItems = inventoryOtherItemsList
+      ? Array.from(inventoryOtherItemsList.querySelectorAll(".inventory-question-card")).map((card) => {
+          const nameInput = card.querySelector("input[type='text']");
+          const quantityInput = card.querySelector("[data-inventory-quantity]");
+          return {
+            name: nameInput?.value.trim() || "",
+            quantity: quantityInput?.value || "",
+          };
+        })
+      : [];
+
+    return {
+      catchmentArea: inventoryCatchmentAreaInput?.value || "",
+      recommendedTank: inventoryRecommendedTankInput?.value || "",
+      selectedTankSize: inventoryWaterTankSelect?.value || "",
+      palletSpec: inventoryPalletSpecInput?.value || "",
+      quantities: Array.from(inventoryQuantityInputs).map((input) => ({
+        value: input.value,
+        defaultValue: input.dataset.defaultQuantity || "",
+      })),
+      specs: Array.from(inventorySelectInputs).map((select) => select.value),
+      otherItems,
+    };
+  };
+
   if (inventorySubmitButton) {
     inventorySubmitButton.addEventListener("click", () => {
       const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
@@ -635,7 +770,15 @@ if (inventoryForm) {
         return;
       }
 
-      setSubmittedFormStatus(householdId, "inventory");
+      const inventoryPayload = collectInventorySubmissionPayload();
+      setSubmittedFormStatus(householdId, "inventory", "Submitted", {
+        payload: inventoryPayload,
+        householdPatch: {
+          inventoryCatchmentArea: inventoryPayload.catchmentArea,
+          inventoryRecommendedTank: inventoryPayload.recommendedTank,
+          inventorySelectedTankSize: inventoryPayload.selectedTankSize,
+        },
+      });
 
       try {
         sessionStorage.setItem(postRedirectMessageKey, `The Inventory form for household ID ${householdId} is submitted successfully.`);
@@ -722,6 +865,8 @@ if (socioeconomicForm) {
       seafFacilities: facilities.length > 0 ? facilities : facilityChecks,
       seafUtilities: utilityChecks,
     });
+
+    return responses[householdId];
   };
 
   const addRepeatableItem = (container, template) => {
@@ -831,8 +976,14 @@ if (socioeconomicForm) {
       }
 
       const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
-      saveSeafResponse();
-      setSubmittedFormStatus(householdId, "seaf");
+      const seafPayload = saveSeafResponse();
+      setSubmittedFormStatus(householdId, "seaf", "Submitted", {
+        payload: seafPayload || {},
+        householdPatch: {
+          seafFacilities: seafPayload?.facilities || [],
+          seafUtilities: seafPayload?.utilities || [],
+        },
+      });
 
       try {
         sessionStorage.setItem(postRedirectMessageKey, "The SEAF is submitted successfully.");
@@ -1152,13 +1303,28 @@ if (engineeringForm) {
       const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
       const engineerName = engineerSelect ? engineerSelect.value.trim() : "";
       const catchmentTotalArea = catchmentTotalAreaInput ? catchmentTotalAreaInput.value.trim() : "";
-      setSubmittedFormStatus(householdId, "engineering");
-      upsertHouseholdRecord(householdId, {
+      const engineeringPayload = {
         engineerName,
+        catchmentTotalArea,
+        housingArea: housingAreaInput?.value || "",
         engineeringCatchmentArea: catchmentTotalArea,
         engineeringCatchmentTotalArea: catchmentTotalArea,
-        engineeringTankSpace: engineeringForm.querySelector("[data-water-need-storage]")?.value || "",
+        waterNeedArea: engineeringForm.querySelector("[data-water-need-area]")?.value || "",
+        waterNeedSpace: engineeringForm.querySelector("[data-water-need-space]")?.value || "",
+        waterNeedQuantity: engineeringForm.querySelector("[data-water-need-quantity]")?.value || "",
         proposedStorageCapacity: engineeringForm.querySelector("[data-proposed-storage-capacity]")?.value || "",
+        engineeringTankSpace: engineeringForm.querySelector("[data-water-need-storage]")?.value || "",
+      };
+
+      setSubmittedFormStatus(householdId, "engineering", "Submitted", {
+        payload: engineeringPayload,
+        householdPatch: {
+          engineerName,
+          engineeringCatchmentArea: catchmentTotalArea,
+          engineeringCatchmentTotalArea: catchmentTotalArea,
+          engineeringTankSpace: engineeringPayload.engineeringTankSpace,
+          proposedStorageCapacity: engineeringPayload.proposedStorageCapacity,
+        },
       });
 
       try {
@@ -1634,12 +1800,21 @@ if (householdForm) {
       return;
     }
 
-    upsertHouseholdRecord(householdId, {
+    const householdPatch = {
       ...getHouseholdAssessmentSnapshot(eligibilityStatus),
       householdId,
       status: eligibilityStatus,
       cmoName: enumeratorSelect?.value || "",
       stageStatus: readSubmittedForms()[householdId] || {},
+    };
+
+    upsertHouseholdRecord(householdId, householdPatch);
+    queueBackendSync("/api/forms/household/submit", {
+      householdId,
+      payload: householdPatch,
+      householdPatch,
+      status: "Submitted",
+      headName: householdPatch.headName || "",
     });
   };
 
