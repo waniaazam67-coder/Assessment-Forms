@@ -1328,8 +1328,9 @@ select {
   gap: 24px;
 }
 
-.inventory-meta {
-  margin-bottom: 8px;
+.inventory-meta-stack {
+  display: grid;
+  gap: 14px;
 }
 
 .inventory-grid {
@@ -1351,6 +1352,11 @@ select {
 .inventory-card {
   display: grid;
   gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 253, 0.98));
+  box-shadow: 0 12px 30px rgba(141, 168, 189, 0.08);
 }
 
 .inventory-card__title {
@@ -1370,6 +1376,52 @@ select {
 
 .inventory-card__title--orange {
   color: #dc7b44;
+}
+
+.inventory-card .assessment-grid {
+  margin-top: 0;
+}
+
+.inventory-card .field-group {
+  min-width: 0;
+}
+
+.inventory-question-list {
+  display: grid;
+  gap: 16px;
+}
+
+.inventory-question-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.inventory-question-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.inventory-question-card .field {
+  width: 100%;
+}
+
+.inventory-question-card .field > span {
+  color: #656f78;
+}
+
+.inventory-other-item-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #dc7b44;
+}
+
+.inventory-question-card .button {
+  justify-self: start;
 }
 
 .inventory-subgroup {

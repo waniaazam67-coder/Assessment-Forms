@@ -75,6 +75,15 @@ const writeHouseholdRecords = (records) => {
   localStorage.setItem(householdRecordsStorageKey, JSON.stringify(records));
 };
 
+const getHouseholdRecordById = (householdId) => {
+  if (!householdId) {
+    return null;
+  }
+
+  const records = readHouseholdRecords();
+  return records.find((record) => record?.householdId === householdId) || null;
+};
+
 const upsertHouseholdRecord = (householdId, patch = {}) => {
   if (!householdId) {
     return null;
@@ -97,6 +106,50 @@ const upsertHouseholdRecord = (householdId, patch = {}) => {
 
   writeHouseholdRecords(records);
   return nextRecord;
+};
+
+const getEngineeringCatchmentAreaForHousehold = (householdId) => {
+  const record = getHouseholdRecordById(householdId);
+  const rawArea = record?.engineeringCatchmentTotalArea || record?.engineeringCatchmentArea || "";
+  const area = Number.parseFloat(String(rawArea).replace(/,/g, ""));
+  return Number.isFinite(area) ? area : 0;
+};
+
+const getRecommendedTankSize = (catchmentArea) => {
+  if (!Number.isFinite(catchmentArea) || catchmentArea < 200) {
+    return "";
+  }
+
+  if (catchmentArea <= 399) {
+    return "800";
+  }
+
+  if (catchmentArea <= 599) {
+    return "1000";
+  }
+
+  if (catchmentArea <= 799) {
+    return "1200";
+  }
+
+  if (catchmentArea <= 999) {
+    return "1500";
+  }
+
+  return "2000";
+};
+
+const getPalletSpecForTank = (tankSize) => {
+  const normalizedSize = String(tankSize || "").trim();
+  if (["800", "1000", "1200"].includes(normalizedSize)) {
+    return "39*47";
+  }
+
+  if (["1500", "2000"].includes(normalizedSize)) {
+    return "47*47";
+  }
+
+  return "";
 };
 
 const getGenderFromCnic = (cnicValue) => {
@@ -446,6 +499,15 @@ const selectedHouseholdSummary = document.querySelector("[data-selected-househol
 const selectedHouseholdIdInput = document.querySelector("[data-selected-household-id]");
 const selectedHouseholdNameInput = document.querySelector("[data-selected-household-name]");
 const inventoryForm = document.querySelector("[data-inventory-form]");
+const inventoryCatchmentAreaInput = document.querySelector("[data-inventory-catchment-area]");
+const inventoryRecommendedTankInput = document.querySelector("[data-inventory-recommended-tank]");
+const inventoryFeedback = document.querySelector("[data-inventory-feedback]");
+const inventoryWaterTankSelect = document.querySelector("[data-inventory-water-tank-select]");
+const inventoryPalletSpecInput = document.querySelector("[data-inventory-pallet-spec]");
+const inventoryAddOtherItemButton = document.querySelector("[data-add-other-item]");
+const inventoryOtherItemsList = document.querySelector("[data-other-items-list]");
+const inventoryQuantityInputs = Array.from(document.querySelectorAll("[data-inventory-quantity]"));
+const inventorySelectInputs = Array.from(document.querySelectorAll("[data-inventory-select]"));
 
 if (selectedHouseholdSummary || selectedHouseholdIdInput || selectedHouseholdNameInput) {
   try {
@@ -473,7 +535,92 @@ if (selectedHouseholdSummary || selectedHouseholdIdInput || selectedHouseholdNam
 
 if (inventoryForm) {
   const inventorySubmitButton = document.querySelector("[data-inventory-submit]");
-  const inventoryFeedback = document.querySelector("[data-inventory-feedback]");
+  let otherItemCount = 0;
+
+  const createOtherItemCard = () => {
+    otherItemCount += 1;
+    const card = document.createElement("section");
+    card.className = "inventory-question-card";
+    card.innerHTML = `
+      <h4 class="inventory-other-item-title">Other item ${otherItemCount}</h4>
+      <label class="field">
+        <span>Item name</span>
+        <input type="text" placeholder="Enter item name">
+      </label>
+      <label class="field">
+        <span>Quantity</span>
+        <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
+      </label>
+    `;
+    return card;
+  };
+
+  const applyInventoryDefaults = () => {
+    const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
+    const catchmentArea = getEngineeringCatchmentAreaForHousehold(householdId);
+    const recommendedTankSize = getRecommendedTankSize(catchmentArea);
+
+    if (inventoryCatchmentAreaInput) {
+      inventoryCatchmentAreaInput.value = catchmentArea > 0 ? `${catchmentArea.toFixed(2)} sq ft` : "";
+    }
+
+    if (inventoryRecommendedTankInput) {
+      inventoryRecommendedTankInput.value = recommendedTankSize ? `${recommendedTankSize} liters` : "No recommendation";
+    }
+
+    if (recommendedTankSize) {
+      if (inventoryWaterTankSelect) {
+        inventoryWaterTankSelect.value = recommendedTankSize;
+      }
+    }
+
+    const selectedTankSize = inventoryWaterTankSelect ? inventoryWaterTankSelect.value : recommendedTankSize;
+
+    if (inventoryPalletSpecInput) {
+      inventoryPalletSpecInput.value = getPalletSpecForTank(selectedTankSize);
+    }
+
+    inventoryQuantityInputs.forEach((input) => {
+      if (!input.value) {
+        input.value = input.dataset.defaultQuantity || "1";
+      }
+    });
+
+    inventorySelectInputs.forEach((select) => {
+      if (!select.value && select.options.length > 0) {
+        select.selectedIndex = 0;
+      }
+    });
+
+    if (inventoryFeedback) {
+      if (recommendedTankSize && catchmentArea > 0) {
+        inventoryFeedback.textContent = `Catchment area ${catchmentArea.toFixed(2)} sq ft maps to a ${recommendedTankSize} liter tank.`;
+      } else if (catchmentArea > 0) {
+        inventoryFeedback.textContent = `Catchment area ${catchmentArea.toFixed(2)} sq ft does not match one of the configured tank bands yet.`;
+      } else {
+        inventoryFeedback.textContent = "No catchment total was found from the engineering form.";
+      }
+      inventoryFeedback.classList.remove("form-feedback-error");
+      inventoryFeedback.classList.remove("form-feedback-success");
+    }
+  };
+
+  applyInventoryDefaults();
+
+  if (inventoryWaterTankSelect) {
+    inventoryWaterTankSelect.addEventListener("change", () => {
+      if (inventoryPalletSpecInput) {
+        inventoryPalletSpecInput.value = getPalletSpecForTank(inventoryWaterTankSelect.value);
+      }
+    });
+  }
+
+  if (inventoryAddOtherItemButton && inventoryOtherItemsList) {
+    inventoryAddOtherItemButton.addEventListener("click", () => {
+      inventoryOtherItemsList.hidden = false;
+      inventoryOtherItemsList.append(createOtherItemCard());
+    });
+  }
 
   if (inventorySubmitButton) {
     inventorySubmitButton.addEventListener("click", () => {
@@ -706,15 +853,16 @@ if (engineeringForm) {
   const housingWidthInput = engineeringForm.querySelector("[data-housing-width]");
   const housingDepthInput = engineeringForm.querySelector("[data-housing-depth]");
   const housingAreaInput = engineeringForm.querySelector("[data-housing-area]");
-    const catchmentRows = Array.from(engineeringForm.querySelectorAll("[data-catchment-row]"));
-    const tankSections = Array.from(engineeringForm.querySelectorAll("[data-tank-section]"));
-    const tankCountInputs = Array.from(engineeringForm.querySelectorAll("[data-tank-count]"));
-    const waterNeedAreaInput = engineeringForm.querySelector("[data-water-need-area]");
-    const waterNeedSpaceInput = engineeringForm.querySelector("[data-water-need-space]");
-    const waterNeedQuantityInput = engineeringForm.querySelector("[data-water-need-quantity]");
-    const waterNeedHouseholdSizeInput = engineeringForm.querySelector("[data-water-need-household-size]");
-    const waterNeedDailyInput = engineeringForm.querySelector("[data-water-need-daily]");
-    const waterNeedStorageInput = engineeringForm.querySelector("[data-water-need-storage]");
+  const catchmentRows = Array.from(engineeringForm.querySelectorAll("[data-catchment-row]"));
+  const tankSections = Array.from(engineeringForm.querySelectorAll("[data-tank-section]"));
+  const tankCountInputs = Array.from(engineeringForm.querySelectorAll("[data-tank-count]"));
+  const catchmentTotalAreaInput = engineeringForm.querySelector("[data-catchment-total-area]");
+  const waterNeedAreaInput = engineeringForm.querySelector("[data-water-need-area]");
+  const waterNeedSpaceInput = engineeringForm.querySelector("[data-water-need-space]");
+  const waterNeedQuantityInput = engineeringForm.querySelector("[data-water-need-quantity]");
+  const waterNeedHouseholdSizeInput = engineeringForm.querySelector("[data-water-need-household-size]");
+  const waterNeedDailyInput = engineeringForm.querySelector("[data-water-need-daily]");
+  const waterNeedStorageInput = engineeringForm.querySelector("[data-water-need-storage]");
 
   const syncToggleField = (checkbox) => {
     const targetName = checkbox.dataset.toggleTarget;
@@ -758,10 +906,23 @@ if (engineeringForm) {
     syncToggleField(checkbox);
   });
 
-    const syncCatchmentRow = (row) => {
-      const widthInput = row.querySelector("[data-catchment-width]");
-      const lengthInput = row.querySelector("[data-catchment-length]");
-      const areaInput = row.querySelector("[data-catchment-area]");
+  const syncCatchmentTotalArea = () => {
+    if (!catchmentTotalAreaInput) {
+      return;
+    }
+
+    const totalArea = catchmentRows
+      .map((row) => Number.parseFloat(row.querySelector("[data-catchment-area]")?.value || ""))
+      .filter((value) => Number.isFinite(value))
+      .reduce((sum, value) => sum + value, 0);
+
+    catchmentTotalAreaInput.value = totalArea > 0 ? totalArea.toFixed(2) : "";
+  };
+
+  const syncCatchmentRow = (row) => {
+    const widthInput = row.querySelector("[data-catchment-width]");
+    const lengthInput = row.querySelector("[data-catchment-length]");
+    const areaInput = row.querySelector("[data-catchment-area]");
 
     if (!widthInput || !lengthInput || !areaInput) {
       return;
@@ -770,15 +931,17 @@ if (engineeringForm) {
     const width = Number.parseFloat(widthInput.value);
     const length = Number.parseFloat(lengthInput.value);
 
-      if (Number.isFinite(width) && Number.isFinite(length)) {
-        areaInput.value = (width * length).toFixed(2);
-        syncWaterNeedCalculations();
-        return;
-      }
-
-      areaInput.value = "";
+    if (Number.isFinite(width) && Number.isFinite(length)) {
+      areaInput.value = (width * length).toFixed(2);
+      syncCatchmentTotalArea();
       syncWaterNeedCalculations();
-    };
+      return;
+    }
+
+    areaInput.value = "";
+    syncCatchmentTotalArea();
+    syncWaterNeedCalculations();
+  };
 
     const hasAtLeastOneCatchmentRow = () => {
       return catchmentRows.some((row) => {
@@ -988,10 +1151,12 @@ if (engineeringForm) {
 
       const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
       const engineerName = engineerSelect ? engineerSelect.value.trim() : "";
+      const catchmentTotalArea = catchmentTotalAreaInput ? catchmentTotalAreaInput.value.trim() : "";
       setSubmittedFormStatus(householdId, "engineering");
       upsertHouseholdRecord(householdId, {
         engineerName,
-        engineeringCatchmentArea: engineeringForm.querySelector("[data-water-need-area]")?.value || "",
+        engineeringCatchmentArea: catchmentTotalArea,
+        engineeringCatchmentTotalArea: catchmentTotalArea,
         engineeringTankSpace: engineeringForm.querySelector("[data-water-need-storage]")?.value || "",
         proposedStorageCapacity: engineeringForm.querySelector("[data-proposed-storage-capacity]")?.value || "",
       });

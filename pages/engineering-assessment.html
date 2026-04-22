@@ -268,6 +268,13 @@
             </table>
           </div>
 
+          <div class="assessment-grid">
+            <label class="field field-span-1">
+              <span>Total catchment area</span>
+              <input type="text" placeholder="Auto calculated" data-catchment-total-area readonly>
+            </label>
+          </div>
+
           <section class="tank-section" data-tank-section="underground">
             <div class="section-header section-header-compact engineering-block-title">
               <h3>Question 4. Underground Tank</h3>
@@ -446,47 +453,6 @@
                     <div class="engineering-calc-line">
                       <span>Q =</span>
                       <input type="text" data-water-need-quantity readonly>
-                      <span>Liters</span>
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td>
-                    Household / Family size (H)
-                    <small class="engineering-note">Enter the number of persons in the household.</small>
-                  </td>
-                  <td class="engineering-calc-cell">
-                    <div class="engineering-calc-line">
-                      <span>H =</span>
-                      <input type="number" min="0" step="1" placeholder="Persons" data-water-need-household-size>
-                      <span>Persons</span>
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td>Water requirement per person/day (R)</td>
-                  <td class="engineering-calc-cell">
-                    <div class="engineering-calc-line">
-                      <span>50 liters</span>
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td>Daily water requirement of the family or household</td>
-                  <td class="engineering-calc-cell">
-                    <div class="engineering-calc-line">
-                      <span>R = H x 50 liters =</span>
-                      <input type="text" data-water-need-daily readonly>
-                      <span>Liters</span>
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td>Required storage capacity at least for 07 days (C)</td>
-                  <td class="engineering-calc-cell">
-                    <div class="engineering-calc-line">
-                      <span>C = R x 7 =</span>
-                      <input type="text" data-water-need-storage readonly>
                       <span>Liters</span>
                     </div>
                   </td>
