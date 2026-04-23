@@ -55,322 +55,199 @@
 
           <p class="helper-text" data-inventory-feedback aria-live="polite"></p>
 
-          <div class="inventory-question-list">
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--blue">Water Tank</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Water tank size</span>
-                  <select data-inventory-water-tank-select>
-                    <option value="800">800 liters</option>
-                    <option value="1000">1000 liters</option>
-                    <option value="1200">1200 liters</option>
-                    <option value="1500">1500 liters</option>
-                    <option value="2000">2000 liters</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
+          <div class="inventory-table-wrap">
+            <table class="inventory-table inventory-table--inventory">
+              <thead>
+                <tr>
+                  <th>Item name</th>
+                  <th>Specification</th>
+                  <th>Quantity</th>
+                </tr>
+              </thead>
+              <tbody data-inventory-rows>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="fixed" data-item-name="Water Tank">
+                  <td class="inventory-table__item-name">Water Tank</td>
+                  <td>
+                    <select data-inventory-spec-select data-inventory-water-tank-select>
+                      <option value="800">800 liters</option>
+                      <option value="1000">1000 liters</option>
+                      <option value="1200">1200 liters</option>
+                      <option value="1500">1500 liters</option>
+                      <option value="2000">2000 liters</option>
+                    </select>
+                  </td>
+                  <td>
+                    <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
+                  </td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="fixed" data-item-name="PVC Pipes">
+                  <td class="inventory-table__item-name">PVC Pipes</td>
+                  <td>
+                    <select data-inventory-spec-select>
+                      <option value="3'' (SDR-41) (B-Class)" selected>3'' (SDR-41) (B-Class)</option>
+                    </select>
+                  </td>
+                  <td>
+                    <input type="number" min="0" step="1" value="2" data-inventory-quantity data-default-quantity="2">
+                  </td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="locked" data-item-name="PVC solvent" data-required-spec="As per requirement" data-required-quantity="1">
+                  <td class="inventory-table__item-name">PVC solvent</td>
+                  <td class="inventory-row__requirement" colspan="2">As per requirement</td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="fixed" data-item-name="Coupling Socket">
+                  <td class="inventory-table__item-name">Coupling Socket</td>
+                  <td>
+                    <select data-inventory-spec-select>
+                      <option selected>3"</option>
+                      <option>2"</option>
+                      <option>4"</option>
+                    </select>
+                  </td>
+                  <td><input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1"></td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="fixed" data-item-name="Elbow 90 degree">
+                  <td class="inventory-table__item-name">Elbow 90 degree</td>
+                  <td>
+                    <select data-inventory-spec-select>
+                      <option selected>3"</option>
+                      <option>2"</option>
+                      <option>4"</option>
+                    </select>
+                  </td>
+                  <td><input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1"></td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="fixed" data-item-name="Elbow 45 degree">
+                  <td class="inventory-table__item-name">Elbow 45 degree</td>
+                  <td>
+                    <select data-inventory-spec-select>
+                      <option selected>3"</option>
+                      <option>2"</option>
+                      <option>4"</option>
+                    </select>
+                  </td>
+                  <td><input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1"></td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="fixed" data-item-name="Equal Tee / Plain Tee">
+                  <td class="inventory-table__item-name">Equal Tee / Plain Tee</td>
+                  <td>
+                    <select data-inventory-spec-select>
+                      <option selected>3"</option>
+                      <option>2"</option>
+                      <option>4"</option>
+                    </select>
+                  </td>
+                  <td><input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1"></td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="fixed" data-item-name="Clean-out Plug">
+                  <td class="inventory-table__item-name">Clean-out Plug</td>
+                  <td>
+                    <select data-inventory-spec-select>
+                      <option selected>3"</option>
+                      <option>2"</option>
+                      <option>4"</option>
+                    </select>
+                  </td>
+                  <td><input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1"></td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="fixed" data-item-name="End Cap">
+                  <td class="inventory-table__item-name">End Cap</td>
+                  <td>
+                    <select data-inventory-spec-select>
+                      <option selected>3"</option>
+                      <option>2"</option>
+                      <option>4"</option>
+                    </select>
+                  </td>
+                  <td><input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1"></td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="fixed" data-item-name="Clamps">
+                  <td class="inventory-table__item-name">Clamps</td>
+                  <td>
+                    <select data-inventory-spec-select>
+                      <option selected>3"</option>
+                      <option>2"</option>
+                      <option>4"</option>
+                    </select>
+                  </td>
+                  <td><input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1"></td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="locked" data-item-name="PPR Plugs" data-required-spec="As per requirement" data-required-quantity="1">
+                  <td class="inventory-table__item-name">PPR Plugs</td>
+                  <td class="inventory-row__requirement" colspan="2">As per requirement</td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="locked" data-item-name="Thread sealant for GI Pipes and Fittings" data-required-spec="As per requirement" data-required-quantity="1">
+                  <td class="inventory-table__item-name">Thread sealant for GI Pipes and Fittings</td>
+                  <td class="inventory-row__requirement" colspan="2">As per requirement</td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="locked" data-item-name="Ash clay bricks" data-required-spec="As per requirement" data-required-quantity="76">
+                  <td class="inventory-table__item-name">Ash clay bricks</td>
+                  <td class="inventory-row__requirement" colspan="2">As per requirement</td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="fixed" data-item-name="Pallets">
+                  <td class="inventory-table__item-name">Pallets</td>
+                  <td>
+                    <select data-inventory-spec-select data-inventory-pallet-spec-select>
+                      <option>39*47</option>
+                      <option>47*47</option>
+                    </select>
+                  </td>
+                  <td><input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1"></td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="fixed" data-item-name="Reducer Socket (Centric / straight / Plain)">
+                  <td class="inventory-table__item-name">Reducer Socket (Centric / straight / Plain)</td>
+                  <td>
+                    <select data-inventory-spec-select>
+                      <option selected>2" x 3"</option>
+                      <option>3" x 4"</option>
+                    </select>
+                  </td>
+                  <td><input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1"></td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="fixed" data-item-name="Reducer Socket (Eccentric)">
+                  <td class="inventory-table__item-name">Reducer Socket (Eccentric)</td>
+                  <td>
+                    <select data-inventory-spec-select>
+                      <option selected>2" x 3"</option>
+                      <option>3" x 4"</option>
+                    </select>
+                  </td>
+                  <td><input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1"></td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="locked" data-item-name="Steel nails" data-required-spec="As per requirement" data-required-quantity="1">
+                  <td class="inventory-table__item-name">Steel nails</td>
+                  <td class="inventory-row__requirement" colspan="2">As per requirement</td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="locked" data-item-name="Screws" data-required-spec="As per requirement" data-required-quantity="0">
+                  <td class="inventory-table__item-name">Screws</td>
+                  <td class="inventory-row__requirement" colspan="2">As per requirement</td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="locked" data-item-name="Plumber's thread" data-required-spec="As per requirement" data-required-quantity="1">
+                  <td class="inventory-table__item-name">Plumber's thread</td>
+                  <td class="inventory-row__requirement" colspan="2">As per requirement</td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="locked" data-item-name="Plumber's tape / Teflon tape" data-required-spec="As per requirement" data-required-quantity="1">
+                  <td class="inventory-table__item-name">Plumber's tape / Teflon tape</td>
+                  <td class="inventory-row__requirement" colspan="2">As per requirement</td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="locked" data-item-name="Pump nozel" data-required-spec="As per requirement" data-required-quantity="1">
+                  <td class="inventory-table__item-name">Pump nozel</td>
+                  <td class="inventory-row__requirement" colspan="2">As per requirement</td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="locked" data-item-name="Bib cock" data-required-spec="As per requirement" data-required-quantity="1">
+                  <td class="inventory-table__item-name">Bib cock</td>
+                  <td class="inventory-row__requirement" colspan="2">As per requirement</td>
+                </tr>
+                <tr class="inventory-row" data-inventory-row data-inventory-row-type="locked" data-item-name="Rawal Plug" data-required-spec="As per requirement" data-required-quantity="1">
+                  <td class="inventory-table__item-name">Rawal Plug</td>
+                  <td class="inventory-row__requirement" colspan="2">As per requirement</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">PVC Pipes</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Specification</span>
-                  <input type="text" value="3'' (SDR-41) (B-Class)" readonly>
-                </label>
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="2" data-inventory-quantity data-default-quantity="2">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Coupling Socket</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Specification</span>
-                  <select data-inventory-select>
-                    <option selected>3"</option>
-                    <option>2"</option>
-                    <option>4"</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Elbow 90 degree</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Specification</span>
-                  <select data-inventory-select>
-                    <option selected>3"</option>
-                    <option>2"</option>
-                    <option>4"</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Elbow 45 degree</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Specification</span>
-                  <select data-inventory-select>
-                    <option selected>3"</option>
-                    <option>2"</option>
-                    <option>4"</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Equal Tee / Plain Tee</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Specification</span>
-                  <select data-inventory-select>
-                    <option selected>3"</option>
-                    <option>2"</option>
-                    <option>4"</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Clean-out Plug</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Specification</span>
-                  <select data-inventory-select>
-                    <option selected>3"</option>
-                    <option>2"</option>
-                    <option>4"</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">End Cap</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Specification</span>
-                  <select data-inventory-select>
-                    <option selected>3"</option>
-                    <option>2"</option>
-                    <option>4"</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Clamps</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Specification</span>
-                  <select data-inventory-select>
-                    <option selected>3"</option>
-                    <option>2"</option>
-                    <option>4"</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">PPR Plug</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Thread sealant for GI Pipes and fittings</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Ash clay bricks</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="76" data-inventory-quantity data-default-quantity="76">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Pallets</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Size for selected tank</span>
-                  <input type="text" value="39*47" data-inventory-pallet-spec readonly>
-                </label>
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Reducer Socket (Centric / straight / Plain)</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Specification</span>
-                  <select data-inventory-select>
-                    <option selected>2" x 3"</option>
-                    <option>3" x 4"</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Reducer Socket (Eccentric)</h3>
-              <div class="inventory-question-stack">
-                <label class="field">
-                  <span>Specification</span>
-                  <select data-inventory-select>
-                    <option selected>2" x 3"</option>
-                    <option>3" x 4"</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span>Quantity</span>
-                  <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-                </label>
-              </div>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Steel nails 2''</h3>
-              <label class="field">
-                <span>Quantity</span>
-                <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-              </label>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Steel nails 3''</h3>
-              <label class="field">
-                <span>Quantity</span>
-                <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-              </label>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Steel nails 2.5''</h3>
-              <label class="field">
-                <span>Quantity</span>
-                <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-              </label>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Screws</h3>
-              <label class="field">
-                <span>Quantity</span>
-                <input type="number" min="0" step="1" value="0" data-inventory-quantity data-default-quantity="0">
-              </label>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Plumbers thread</h3>
-              <label class="field">
-                <span>Quantity</span>
-                <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-              </label>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Plumbers tape / Teflon tape</h3>
-              <label class="field">
-                <span>Quantity</span>
-                <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-              </label>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Pump nozel</h3>
-              <label class="field">
-                <span>Quantity</span>
-                <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-              </label>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Bib cock</h3>
-              <label class="field">
-                <span>Quantity</span>
-                <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-              </label>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Rawal Plug</h3>
-              <label class="field">
-                <span>Quantity</span>
-                <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-              </label>
-            </section>
-
-            <section class="inventory-question-card">
-              <h3 class="inventory-card__title inventory-card__title--orange">Other Items</h3>
-              <button class="button button-muted" type="button" data-add-other-item>Add other item</button>
-              <div class="inventory-question-list" data-other-items-list hidden></div>
-            </section>
+          <div class="inventory-actions">
+            <button class="button button-muted" type="button" data-add-other-item>Add other item</button>
           </div>
         </form>
       </div>
