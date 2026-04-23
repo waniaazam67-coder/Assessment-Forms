@@ -9,6 +9,12 @@ const bootstrapConfig = {
   password: dbConfig.password,
 };
 
+const dedicatedFormTableMap = {
+  seaf: "seaf_submissions",
+  engineering: "engineering_submissions",
+  inventory: "inventory_submissions",
+};
+
 let pool;
 
 const defaultSnapshot = {
@@ -57,6 +63,86 @@ const toMySqlDatetime = (value) => {
   }
 
   return date.toISOString().slice(0, 23).replace("T", " ");
+};
+
+const sanitizeSqlIdentifier = (value, fallback = "field") => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_{2,}/g, "_")
+    .slice(0, 56);
+  const safe = normalized || fallback;
+  return /^[0-9]/.test(safe) ? `field_${safe}` : safe;
+};
+
+const normalizeDedicatedCellValue = (value) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (Array.isArray(value) || (value && typeof value === "object")) {
+    return stringifyJson(value);
+  }
+
+  return String(value);
+};
+
+const flattenSubmissionObject = (value, prefix = "", output = {}) => {
+  if (Array.isArray(value)) {
+    output[prefix] = stringifyJson(value);
+    return output;
+  }
+
+  if (value && typeof value === "object") {
+    Object.entries(value).forEach(([key, nestedValue]) => {
+      const nextPrefix = prefix ? `${prefix}_${key}` : key;
+      flattenSubmissionObject(nestedValue, nextPrefix, output);
+    });
+    return output;
+  }
+
+  if (prefix) {
+    output[prefix] = value ?? "";
+  }
+
+  return output;
+};
+
+const getDedicatedTableName = (formKey) => dedicatedFormTableMap[formKey] || null;
+
+const buildDedicatedFormRow = (payload = {}) => {
+  const explicitRow = asObject(payload.tableRow, null);
+  if (explicitRow) {
+    return explicitRow;
+  }
+
+  const fallbackPayload = Object.fromEntries(
+    Object.entries(asObject(payload, {})).filter(([key]) => !["formState", "tableRow"].includes(key))
+  );
+
+  return flattenSubmissionObject(fallbackPayload);
+};
+
+const toDedicatedColumnMap = (rowData = {}) => {
+  const output = {};
+  const used = new Map();
+
+  Object.entries(asObject(rowData, {})).forEach(([key, value], index) => {
+    const baseKey = sanitizeSqlIdentifier(key, `field_${index + 1}`);
+    const nextCount = (used.get(baseKey) || 0) + 1;
+    used.set(baseKey, nextCount);
+    const finalKey = nextCount === 1 ? baseKey : `${baseKey}_${nextCount}`;
+    output[finalKey] = normalizeDedicatedCellValue(value);
+  });
+
+  return output;
 };
 
 const ensurePool = () => {
@@ -133,6 +219,24 @@ const createSchemaStatements = [
     response JSON NULL,
     submitted_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     CONSTRAINT seaf_responses_household_fk FOREIGN KEY (household_id) REFERENCES households (household_id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  `CREATE TABLE IF NOT EXISTS seaf_submissions (
+    household_id VARCHAR(64) NOT NULL PRIMARY KEY,
+    payload_json JSON NULL,
+    submitted_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    CONSTRAINT seaf_submissions_household_fk FOREIGN KEY (household_id) REFERENCES households (household_id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  `CREATE TABLE IF NOT EXISTS engineering_submissions (
+    household_id VARCHAR(64) NOT NULL PRIMARY KEY,
+    payload_json JSON NULL,
+    submitted_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    CONSTRAINT engineering_submissions_household_fk FOREIGN KEY (household_id) REFERENCES households (household_id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  `CREATE TABLE IF NOT EXISTS inventory_submissions (
+    household_id VARCHAR(64) NOT NULL PRIMARY KEY,
+    payload_json JSON NULL,
+    submitted_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    CONSTRAINT inventory_submissions_household_fk FOREIGN KEY (household_id) REFERENCES households (household_id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 ];
 
@@ -235,6 +339,25 @@ const ensureHouseholdExists = async (connection, householdId, payload = {}) => {
   );
 };
 
+const ensureDedicatedFormColumns = async (connection, tableName, rowData = {}) => {
+  const columnNames = Object.keys(rowData);
+  if (columnNames.length === 0) {
+    return;
+  }
+
+  const [rows] = await connection.query(`SHOW COLUMNS FROM \`${tableName}\``);
+  const existingColumns = new Set(rows.map((row) => row.Field));
+
+  for (const columnName of columnNames) {
+    if (existingColumns.has(columnName)) {
+      continue;
+    }
+
+    await connection.query(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` LONGTEXT NULL`);
+    existingColumns.add(columnName);
+  }
+};
+
 const upsertSubmissionStatus = async (connection, householdId, formKey, status = "Submitted", extra = {}) => {
   const current = {
     head_name: extra.headName || "",
@@ -298,6 +421,33 @@ const upsertFormSubmission = async (connection, householdId, formKey, payload) =
   );
 };
 
+const upsertDedicatedFormSubmission = async (connection, householdId, formKey, payload = {}) => {
+  const tableName = getDedicatedTableName(formKey);
+  if (!tableName) {
+    return;
+  }
+
+  const dynamicColumns = toDedicatedColumnMap(buildDedicatedFormRow(payload));
+  await ensureDedicatedFormColumns(connection, tableName, dynamicColumns);
+
+  const data = {
+    payload_json: stringifyJson(payload),
+    ...dynamicColumns,
+  };
+
+  const columns = ["household_id", ...Object.keys(data)];
+  const placeholders = columns.map(() => "?").join(", ");
+  const assignments = ["submitted_at = CURRENT_TIMESTAMP(3)", ...Object.keys(data).map((column) => `\`${column}\` = VALUES(\`${column}\`)`)];
+  const values = [householdId, ...Object.values(data)];
+
+  await connection.query(
+    `INSERT INTO \`${tableName}\` (${columns.map((column) => `\`${column}\``).join(", ")})
+     VALUES (${placeholders})
+     ON DUPLICATE KEY UPDATE ${assignments.join(", ")}`,
+    values
+  );
+};
+
 const upsertSeafResponse = async (connection, householdId, payload) => {
   await connection.query(
     `INSERT INTO seaf_responses (household_id, response)
@@ -341,11 +491,30 @@ const normalizeHouseholdRow = (row) => {
   };
 };
 
+const normalizeDedicatedExportRow = (row) =>
+  Object.fromEntries(
+    Object.entries(row || {})
+      .filter(([key]) => key !== "payload_json")
+      .map(([key, value]) => [key, value === null || value === undefined ? "" : value])
+  );
+
 const listHouseholds = async () => {
   const [rows] = await ensurePool().query(
     "SELECT * FROM households ORDER BY updated_at DESC, household_id DESC"
   );
   return rows.map(normalizeHouseholdRow);
+};
+
+const listDedicatedFormRows = async (formKey) => {
+  const tableName = getDedicatedTableName(formKey);
+  if (!tableName) {
+    return [];
+  }
+
+  const [rows] = await ensurePool().query(
+    `SELECT * FROM \`${tableName}\` ORDER BY submitted_at DESC, household_id DESC`
+  );
+  return rows.map(normalizeDedicatedExportRow);
 };
 
 const getHouseholdById = async (householdId) => {
@@ -462,6 +631,7 @@ const submitForm = async ({ householdId, formKey, status = "Submitted", headName
     await ensureHouseholdExists(connection, householdId, householdPatch);
     const nextStatus = await upsertSubmissionStatus(connection, householdId, formKey, status, { headName });
     await upsertFormSubmission(connection, householdId, formKey, payload);
+    await upsertDedicatedFormSubmission(connection, householdId, formKey, payload);
 
     if (formKey === "seaf") {
       await upsertSeafResponse(connection, householdId, payload);
@@ -565,6 +735,7 @@ const seedLegacyData = async () => {
              ON DUPLICATE KEY UPDATE payload = VALUES(payload), submitted_at = VALUES(submitted_at)`,
             [householdId, formKey, stringifyJson(entry?.payload || {}), toMySqlDatetime(entry?.submittedAt)]
           );
+          await upsertDedicatedFormSubmission(connection, householdId, formKey, entry?.payload || {});
         }
       }
 
@@ -595,6 +766,18 @@ const seedLegacyData = async () => {
   return true;
 };
 
+const backfillDedicatedFormTables = async () => {
+  await runTransaction(async (connection) => {
+    const [rows] = await connection.query(
+      "SELECT household_id, form_key, payload FROM form_submissions ORDER BY submitted_at ASC, household_id ASC"
+    );
+
+    for (const row of rows) {
+      await upsertDedicatedFormSubmission(connection, row.household_id, row.form_key, parseJson(row.payload, {}));
+    }
+  });
+};
+
 const healthCheck = async () => {
   const [rows] = await ensurePool().query("SELECT 1 AS ok");
   return Boolean(rows[0]?.ok === 1);
@@ -604,12 +787,14 @@ const initializeDatabase = async () => {
   await ensureDatabase();
   await ensureSchema();
   await seedLegacyData();
+  await backfillDedicatedFormTables();
 };
 
 module.exports = {
   initializeDatabase,
   healthCheck,
   listHouseholds,
+  listDedicatedFormRows,
   getHouseholdById,
   getFormSubmission,
   getSnapshot,

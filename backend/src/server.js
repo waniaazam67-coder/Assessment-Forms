@@ -1,7 +1,7 @@
 const http = require("node:http");
 const { URL } = require("node:url");
 const { frontendDir, host, port, admin } = require("./config");
-const { healthCheck, initializeDatabase, listHouseholds, getHouseholdById, getFormSubmission, getSnapshot, upsertHousehold, submitForm } = require("./db");
+const { healthCheck, initializeDatabase, listHouseholds, listDedicatedFormRows, getHouseholdById, getFormSubmission, getSnapshot, upsertHousehold, submitForm } = require("./db");
 const { sendJson, sendText, sendDownload, readRequestBody, serveStatic } = require("./http");
 
 const allowedForms = new Set(["household", "seaf", "engineering", "inventory"]);
@@ -84,30 +84,6 @@ const flattenRow = (value, prefix = "", output = {}) => {
   return output;
 };
 
-const toSingleFormRows = (formSubmissions = {}, formKey) => {
-  const rows = [];
-
-  Object.entries(formSubmissions).forEach(([householdId, forms]) => {
-    const entry = forms?.[formKey];
-    if (!entry) {
-      return;
-    }
-
-    rows.push({
-      householdId,
-      formKey,
-      submittedAt: entry.submittedAt || "",
-      ...flattenRow(
-        Object.fromEntries(
-          Object.entries(entry.payload || {}).filter(([key]) => key !== "formState")
-        )
-      ),
-    });
-  });
-
-  return rows;
-};
-
 const toSeafResponseRows = (seafResponses = {}) =>
   Object.entries(seafResponses).map(([householdId, entry]) => ({
     householdId,
@@ -115,7 +91,7 @@ const toSeafResponseRows = (seafResponses = {}) =>
     payload: entry?.payload || {},
   }));
 
-const getExportPayload = (snapshot, dataset) => {
+const getExportPayload = async (snapshot, dataset) => {
   switch (dataset) {
     case "households":
       return snapshot.households || [];
@@ -126,11 +102,11 @@ const getExportPayload = (snapshot, dataset) => {
     case "seaf-responses":
       return toSeafResponseRows(snapshot.seafResponses);
     case "seaf":
-      return toSingleFormRows(snapshot.formSubmissions, "seaf");
+      return listDedicatedFormRows("seaf");
     case "engineering":
-      return toSingleFormRows(snapshot.formSubmissions, "engineering");
+      return listDedicatedFormRows("engineering");
     case "inventory":
-      return toSingleFormRows(snapshot.formSubmissions, "inventory");
+      return listDedicatedFormRows("inventory");
     case "snapshot":
       return snapshot;
     default:
@@ -204,7 +180,7 @@ const handleApi = async (req, res, pathname) => {
     }
 
     const snapshot = await getSnapshot();
-    const payload = getExportPayload(snapshot, dataset);
+    const payload = await getExportPayload(snapshot, dataset);
     const dateStamp = new Date().toISOString().slice(0, 10);
 
     if (format === "json") {

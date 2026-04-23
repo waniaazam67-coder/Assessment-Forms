@@ -195,6 +195,23 @@ const writeSelectedHousehold = (household) => {
   }
 };
 
+const getSelectedHouseholdIdentity = () => {
+  const selectedHousehold = readSelectedHousehold() || {};
+  const householdId = selectedHouseholdIdInput?.value?.trim?.() || selectedHousehold.householdId || "";
+  const selectedHouseholdName = selectedHouseholdNameInput?.value?.trim?.() || selectedHousehold.headName || "";
+  const respondentCnic = selectedHousehold.respondentCnic || "";
+  const headCnic = selectedHousehold.headCnic || "";
+  const cnic = respondentCnic || headCnic || "";
+
+  return {
+    household_id: householdId,
+    selected_household_name: selectedHouseholdName,
+    cnic,
+    respondent_cnic: respondentCnic,
+    head_cnic: headCnic,
+  };
+};
+
 const mergeSelectedHousehold = (patch = {}) => {
   const currentHousehold = readSelectedHousehold();
   const householdId = patch.householdId || currentHousehold?.householdId;
@@ -379,6 +396,375 @@ const restoreFormState = (form, formState) => {
 
     control.value = savedControl.value ?? "";
   });
+};
+
+const slugifySubmissionKey = (value, fallback = "field") => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_{2,}/g, "_");
+  const safeValue = normalized || fallback;
+  return /^[0-9]/.test(safeValue) ? `field_${safeValue}` : safeValue;
+};
+
+const normalizeSubmissionCellValue = (value) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (Array.isArray(value) || (value && typeof value === "object")) {
+    try {
+      return JSON.stringify(value);
+    } catch (error) {
+      return String(value);
+    }
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  return String(value);
+};
+
+const extractControlLabelText = (control) => {
+  if (!control) {
+    return "";
+  }
+
+  const wrappedLabel = control.closest("label");
+  if (wrappedLabel) {
+    const clone = wrappedLabel.cloneNode(true);
+    clone.querySelectorAll("input, select, textarea, button, template").forEach((element) => element.remove());
+    const text = clone.textContent.replace(/\s+/g, " ").trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  const id = control.getAttribute("id");
+  if (id) {
+    const externalLabel = document.querySelector(`label[for="${id}"]`);
+    if (externalLabel) {
+      const text = externalLabel.textContent.replace(/\s+/g, " ").trim();
+      if (text) {
+        return text;
+      }
+    }
+  }
+
+  const tableCell = control.closest("td, th");
+  if (tableCell?.previousElementSibling) {
+    const text = tableCell.previousElementSibling.textContent.replace(/\s+/g, " ").trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  const heading = control.closest("section, article, .question-card, .inventory-question-card")?.querySelector("h3, h4, legend");
+  return heading?.textContent.replace(/\s+/g, " ").trim() || "";
+};
+
+const getControlSubmissionKey = (control, index) => {
+  const dataKeys = Object.keys(control?.dataset || {}).filter((key) => !["defaultQuantity", "toggleTarget", "toggleField"].includes(key));
+  const candidates = [
+    control?.getAttribute("data-db-field"),
+    control?.getAttribute("name"),
+    dataKeys[0],
+    control?.getAttribute("id"),
+    extractControlLabelText(control),
+    `${control?.tagName?.toLowerCase?.() || "field"}_${index + 1}`,
+  ];
+
+  const candidate = candidates.find((value) => String(value || "").trim());
+  return slugifySubmissionKey(candidate, `field_${index + 1}`);
+};
+
+const buildSubmissionTableRow = (form, extras = {}) => {
+  if (!form) {
+    return {};
+  }
+
+  const row = {};
+  const usedKeys = new Map();
+  const assignValue = (rawKey, value) => {
+    const baseKey = slugifySubmissionKey(rawKey);
+    const nextCount = (usedKeys.get(baseKey) || 0) + 1;
+    usedKeys.set(baseKey, nextCount);
+    const finalKey = nextCount === 1 ? baseKey : `${baseKey}_${nextCount}`;
+    row[finalKey] = normalizeSubmissionCellValue(value);
+  };
+
+  const controls = getEditableFormControls(form);
+  const radioGroups = new Set();
+
+  controls.forEach((control, index) => {
+    const type = String(control.getAttribute("type") || "").toLowerCase();
+    const baseKey = getControlSubmissionKey(control, index);
+
+    if (type === "radio") {
+      const radioKey = slugifySubmissionKey(control.name || baseKey, `radio_${index + 1}`);
+      if (!control.checked || radioGroups.has(radioKey)) {
+        return;
+      }
+
+      radioGroups.add(radioKey);
+      row[radioKey] = normalizeSubmissionCellValue(control.value || extractControlLabelText(control));
+      return;
+    }
+
+    if (type === "checkbox") {
+      const optionSource = control.value || extractControlLabelText(control) || `${baseKey}_${index + 1}`;
+      const optionKey = slugifySubmissionKey(`${baseKey}_${optionSource}`, `checkbox_${index + 1}`);
+      row[optionKey] = control.checked ? "Yes" : "No";
+      return;
+    }
+
+    assignValue(baseKey, control.value);
+  });
+
+  Object.entries(extras || {}).forEach(([key, value]) => {
+    if (value === undefined) {
+      return;
+    }
+
+    row[slugifySubmissionKey(key)] = normalizeSubmissionCellValue(value);
+  });
+
+  return row;
+};
+
+const getCheckboxStateRow = (inputs, prefix) => {
+  const row = {};
+
+  Array.from(inputs || []).forEach((input) => {
+    const optionKey = slugifySubmissionKey(input?.value || extractControlLabelText(input) || "option");
+    row[`${prefix}_${optionKey}`] = input?.checked ? "Yes" : "No";
+  });
+
+  return row;
+};
+
+const getSocioTableRow = ({
+  form,
+  personList,
+  facilityList,
+  utilityList,
+  facilities,
+  utilities,
+}) => {
+  if (!form) {
+    return {};
+  }
+
+  const housingPanel = form.querySelector("[data-socio-panel='housing']");
+  const demographicsPanel = form.querySelector("[data-socio-panel='demographics']");
+  const utilitiesPanel = form.querySelector("[data-socio-panel='utilities']");
+  const urbanPanel = form.querySelector("[data-socio-panel='urban']");
+  const floodingPanel = form.querySelector("[data-socio-panel='flooding']");
+  const housingControls = Array.from(housingPanel?.querySelectorAll("input:not([readonly]), select, textarea") || []);
+  const [
+    householdsInDwellingInput,
+    numberOfFloorsInput,
+    numberOfRoomsInput,
+    electricitySourceSelect,
+    cookingFuelSelect,
+    housingStructureSelect,
+    roofTypeSelect,
+  ] = housingControls;
+
+  const householdMembers = Array.from(personList?.querySelectorAll(".repeatable-card") || []).map((card, index) => {
+    const selects = Array.from(card.querySelectorAll("select"));
+    return {
+      memberNumber: index + 1,
+      gender: selects[0]?.value || "",
+      literacyLevel: selects[1]?.value || "",
+      employmentStatus: selects[2]?.value || "",
+    };
+  });
+
+  const utilityCheckboxes = Array.from(utilityList?.querySelectorAll("input[type='checkbox']") || []);
+  const facilityCheckboxes = Array.from(facilityList?.querySelectorAll("input[type='checkbox']") || []);
+  const utilityPanelCheckboxes = Array.from(utilitiesPanel?.querySelectorAll("input[type='checkbox']") || []);
+  const basicUtilityCheckboxes = utilityPanelCheckboxes.slice(0, 3);
+  const waterSourceCheckboxes = utilityPanelCheckboxes.slice(10, 26);
+  const utilitiesControls = Array.from(utilitiesPanel?.querySelectorAll("input:not([readonly]):not([type='checkbox']), select, textarea") || []);
+  const [quantityOfWaterSelect, qualityOfWaterSelect, solidWasteInput, streetSewersSelect, cleanlinessInput] = utilitiesControls;
+  const urbanCheckboxes = Array.from(urbanPanel?.querySelectorAll("input[type='checkbox']") || []);
+  const streetGreeneryCheckboxes = urbanCheckboxes.slice(0, 8);
+  const houseGreeneryCheckboxes = urbanCheckboxes.slice(8, 16);
+  const floodingSelect = floodingPanel?.querySelector("select");
+
+  const row = {
+    ...getSelectedHouseholdIdentity(),
+    households_in_dwelling: householdsInDwellingInput?.value || "",
+    number_of_floors: numberOfFloorsInput?.value || "",
+    number_of_rooms: numberOfRoomsInput?.value || "",
+    electricity_source: electricitySourceSelect?.value || "",
+    cooking_and_heating_fuel: cookingFuelSelect?.value || "",
+    housing_structure_type: housingStructureSelect?.value || "",
+    roof_type: roofTypeSelect?.value || "",
+    household_members_count: String(householdMembers.length),
+    household_members_json: JSON.stringify(householdMembers),
+    selected_facilities_json: JSON.stringify(facilities || []),
+    selected_utilities_json: JSON.stringify(utilities || []),
+    water_quantity: quantityOfWaterSelect?.value || "",
+    water_quality: qualityOfWaterSelect?.value || "",
+    household_solid_waste_disposal: solidWasteInput?.value || "",
+    street_sewers_type: streetSewersSelect?.value || "",
+    cleanliness_of_streets: cleanlinessInput?.value || "",
+    flooding_history: floodingSelect?.value || "",
+  };
+
+  householdMembers.forEach((member, index) => {
+    const prefix = `member_${index + 1}`;
+    row[`${prefix}_gender`] = member.gender;
+    row[`${prefix}_literacy_level`] = member.literacyLevel;
+    row[`${prefix}_employment_status`] = member.employmentStatus;
+  });
+
+  Object.assign(row, getCheckboxStateRow(basicUtilityCheckboxes, "basic_utility"));
+  Object.assign(row, getCheckboxStateRow(facilityCheckboxes, "facility_inside_house"));
+
+  const waterSourceRow = {};
+  waterSourceCheckboxes.forEach((input, index) => {
+    const sectionPrefix = index < 7 ? "water_source_inside_house" : "water_source_outside_house";
+    const optionKey = slugifySubmissionKey(input?.value || extractControlLabelText(input) || `option_${index + 1}`);
+    waterSourceRow[`${sectionPrefix}_${optionKey}`] = input?.checked ? "Yes" : "No";
+  });
+  Object.assign(row, waterSourceRow);
+  Object.assign(row, getCheckboxStateRow(streetGreeneryCheckboxes, "street_greening"));
+  Object.assign(row, getCheckboxStateRow(houseGreeneryCheckboxes, "house_greening"));
+
+  return row;
+};
+
+const getEngineeringTableRow = ({
+  form,
+  engineerName,
+  catchmentRows,
+  catchmentTotalAreaInput,
+  housingWidthInput,
+  housingDepthInput,
+  housingAreaInput,
+  waterNeedAreaInput,
+  waterNeedSpaceInput,
+  waterNeedQuantityInput,
+  waterNeedHouseholdSizeInput,
+  waterNeedDailyInput,
+  waterNeedStorageInput,
+}) => {
+  if (!form) {
+    return {};
+  }
+
+  const row = {
+    ...getSelectedHouseholdIdentity(),
+    engineer_name: engineerName || "",
+    housing_width_ft: housingWidthInput?.value || "",
+    housing_depth_ft: housingDepthInput?.value || "",
+    housing_area_sq_ft: housingAreaInput?.value || "",
+    total_catchment_area_sq_ft: catchmentTotalAreaInput?.value || "",
+    proposed_storage_capacity: form.querySelector("[data-proposed-storage-capacity]")?.value || "",
+    reasons_for_rejection: form.querySelector("textarea")?.value || "",
+    water_need_area_a_sq_ft: waterNeedAreaInput?.value || "",
+    water_need_space_s_cubic_ft: waterNeedSpaceInput?.value || "",
+    water_need_quantity_q_liters: waterNeedQuantityInput?.value || "",
+    water_need_household_size: waterNeedHouseholdSizeInput?.value || "",
+    water_need_daily_liters: waterNeedDailyInput?.value || "",
+    water_need_storage_liters: waterNeedStorageInput?.value || "",
+  };
+
+  Object.assign(row, getCheckboxStateRow(form.querySelectorAll("input[name='roof-material']"), "roof_material"));
+  row.roof_material_other_text = form.querySelector("[data-toggle-field='roof-other'] input")?.value || "";
+  Object.assign(row, getCheckboxStateRow(form.querySelectorAll("input[name='drainage-arrangement']"), "drainage_arrangement"));
+  row.drainage_arrangement_other_text = form.querySelector("[data-toggle-field='drainage-other'] input")?.value || "";
+
+  Array.from(catchmentRows || []).forEach((catchmentRow, index) => {
+    const areaName = slugifySubmissionKey(catchmentRow.querySelector("td")?.textContent || `catchment_${index + 1}`);
+    row[`${areaName}_width_ft`] = catchmentRow.querySelector("[data-catchment-width]")?.value || "";
+    row[`${areaName}_length_ft`] = catchmentRow.querySelector("[data-catchment-length]")?.value || "";
+    row[`${areaName}_area_sq_ft`] = catchmentRow.querySelector("[data-catchment-area]")?.value || "";
+
+    Array.from(catchmentRow.querySelectorAll("[data-drainage-diameter]")).forEach((input, diameterIndex) => {
+      row[`${areaName}_drainage_point_${diameterIndex + 1}_diameter`] = input.value || "";
+    });
+  });
+
+  ["underground", "overhead"].forEach((tankType) => {
+    row[`${tankType}_tank_count`] = form.querySelector(`[data-tank-count='${tankType}']`)?.value || "";
+    row[`${tankType}_tank_material`] = form.querySelector(`[data-tank-material='${tankType}']`)?.value || "";
+    row[`${tankType}_tank_total_capacity`] = form.querySelector(`[data-tank-total='${tankType}']`)?.value || "";
+
+    const generatedRows = Array.from(form.querySelectorAll(`[data-generated-tank-row='${tankType}']`));
+    generatedRows.forEach((generatedRow, index) => {
+      const prefix = `${tankType}_tank_${index + 1}`;
+      row[`${prefix}_depth`] = generatedRow.querySelector("[data-tank-depth]")?.value || "";
+      row[`${prefix}_width`] = generatedRow.querySelector("[data-tank-width]")?.value || "";
+      row[`${prefix}_length`] = generatedRow.querySelector("[data-tank-length]")?.value || "";
+      row[`${prefix}_capacity`] = generatedRow.querySelector("[data-tank-capacity]")?.value || "";
+    });
+  });
+
+  return row;
+};
+
+const getInventoryTableRow = ({
+  form,
+  catchmentArea,
+  recommendedTank,
+  selectedTankSize,
+  palletSpec,
+  otherItems,
+}) => {
+  if (!form) {
+    return {};
+  }
+
+  const row = {
+    ...getSelectedHouseholdIdentity(),
+    catchment_area_from_engineering: catchmentArea || "",
+    recommended_tank: recommendedTank || "",
+    selected_tank_size_liters: selectedTankSize || "",
+    pallet_spec_for_selected_tank: palletSpec || "",
+    other_items_count: String(Array.isArray(otherItems) ? otherItems.length : 0),
+    other_items_json: JSON.stringify(otherItems || []),
+  };
+
+  const cards = Array.from(form.querySelectorAll(".inventory-question-card"));
+  cards.forEach((card) => {
+    const title = card.querySelector("h3")?.textContent.trim() || "";
+    if (!title || title.toLowerCase() === "other items") {
+      return;
+    }
+
+    const key = slugifySubmissionKey(title);
+    const specControl = card.querySelector("select, input[type='text']:not([readonly]) , input[type='text'][readonly], input:not([type='number'])");
+    const quantityControl = card.querySelector("[data-inventory-quantity]");
+
+    if (title.toLowerCase() === "water tank") {
+      row.water_tank_size_liters = selectedTankSize || card.querySelector("[data-inventory-water-tank-select]")?.value || "";
+      row.water_tank_quantity = quantityControl?.value || "";
+      return;
+    }
+
+    const hasSpecificationLabel = Array.from(card.querySelectorAll("label span")).some((span) => span.textContent.trim().toLowerCase().includes("specification") || span.textContent.trim().toLowerCase().includes("size"));
+    if (hasSpecificationLabel && specControl) {
+      row[`${key}_specification`] = specControl.value || "";
+    }
+
+    row[`${key}_quantity`] = quantityControl?.value || "";
+  });
+
+  Array.from(otherItems || []).forEach((item, index) => {
+    row[`other_item_${index + 1}_name`] = item?.name || "";
+    row[`other_item_${index + 1}_quantity`] = item?.quantity || "";
+  });
+
+  return row;
 };
 
 const ensureRepeatableCount = (container, template, targetCount, addItem) => {
@@ -1382,23 +1768,16 @@ if (inventoryForm) {
   void applyInventorySubmission();
 
   const collectInventorySubmissionPayload = () => {
-    const items = getInventoryRows().map((row) => {
-      const specSelect = row.querySelector("[data-inventory-spec-select]");
-      const quantityInput = row.querySelector("[data-inventory-quantity]");
-      const locked = isLockedInventoryRow(row);
-      const itemName = getInventoryRowItemName(row) || row.dataset.itemName || row.querySelector(".inventory-table__item-name")?.textContent?.trim() || "";
-
-      return {
-        name: itemName,
-        itemName,
-        specification: locked ? (row.dataset.requiredSpec || "As per requirement") : (specSelect?.value || ""),
-        quantity: locked ? (row.dataset.requiredQuantity || "") : (quantityInput?.value || ""),
-        isCustom: row.dataset.inventoryRowType === "custom",
-        locked,
-      };
-    });
-
-    const otherItems = items.filter((item) => item.isCustom);
+    const otherItems = inventoryOtherItemsList
+      ? Array.from(inventoryOtherItemsList.querySelectorAll(".inventory-question-card")).map((card) => {
+          const nameInput = card.querySelector("input[type='text']");
+          const quantityInput = card.querySelector("[data-inventory-quantity]");
+          return {
+            name: nameInput?.value.trim() || "",
+            quantity: quantityInput?.value || "",
+          };
+        })
+      : [];
 
     return {
       formState: serializeFormState(inventoryForm, {
@@ -1407,14 +1786,21 @@ if (inventoryForm) {
       catchmentArea: inventoryCatchmentAreaInput?.value || "",
       recommendedTank: inventoryRecommendedTankInput?.value || "",
       selectedTankSize: inventoryWaterTankSelect?.value || "",
-      palletSpec: inventoryPalletSpecSelect?.value || "",
-      items,
-      quantities: getInventoryQuantityInputs().map((input) => ({
+      palletSpec: inventoryPalletSpecInput?.value || "",
+      quantities: Array.from(inventoryQuantityInputs).map((input) => ({
         value: input.value,
         defaultValue: input.dataset.defaultQuantity || "",
       })),
       specs: getInventorySpecSelectInputs().map((select) => select.value),
       otherItems,
+      tableRow: getInventoryTableRow({
+        form: inventoryForm,
+        catchmentArea,
+        recommendedTank,
+        selectedTankSize,
+        palletSpec,
+        otherItems,
+      }),
     };
   };
 
@@ -1519,15 +1905,25 @@ if (socioeconomicForm) {
     const formState = serializeFormState(socioeconomicForm, {
       personCount: personList?.querySelectorAll(".repeatable-card").length || 1,
     });
+    const selectedFacilities = facilities.length > 0 ? facilities : facilityChecks;
+    const tableRow = getSocioTableRow({
+      form: socioeconomicForm,
+      personList,
+      facilityList,
+      utilityList,
+      facilities: selectedFacilities,
+      utilities: utilityChecks,
+    });
     responses[householdId] = {
       ...(responses[householdId] || {}),
-      facilities: facilities.length > 0 ? facilities : facilityChecks,
+      facilities: selectedFacilities,
       utilities: utilityChecks,
       formState,
+      tableRow,
     };
     writeSeafResponses(responses);
     upsertHouseholdRecord(householdId, {
-      seafFacilities: facilities.length > 0 ? facilities : facilityChecks,
+      seafFacilities: selectedFacilities,
       seafUtilities: utilityChecks,
     });
 
@@ -2152,6 +2548,21 @@ if (engineeringForm) {
         waterNeedDaily: waterNeedDailyInput?.value || "",
         proposedStorageCapacity: engineeringForm.querySelector("[data-proposed-storage-capacity]")?.value || "",
         engineeringTankSpace: engineeringForm.querySelector("[data-water-need-storage]")?.value || "",
+        tableRow: getEngineeringTableRow({
+          form: engineeringForm,
+          engineerName,
+          catchmentRows,
+          catchmentTotalAreaInput,
+          housingWidthInput,
+          housingDepthInput,
+          housingAreaInput,
+          waterNeedAreaInput,
+          waterNeedSpaceInput,
+          waterNeedQuantityInput,
+          waterNeedHouseholdSizeInput,
+          waterNeedDailyInput,
+          waterNeedStorageInput,
+        }),
       };
 
       setSubmittedFormStatus(householdId, "engineering", "Submitted", {
