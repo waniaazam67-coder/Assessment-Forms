@@ -38,6 +38,7 @@
         <div>
           <p class="admin-kicker">Private workspace</p>
           <h2>Assessment Admin Dashboard</h2>
+          <small class="admin-topbar__status" data-admin-data-source>Loading database connection...</small>
         </div>
         <div class="admin-topbar__user">
           <span data-admin-user-name>Admin</span>
@@ -69,6 +70,11 @@
             <div>
               <h3>Data tables</h3>
               <p class="admin-card__subtitle">Filter submitted households by location, status, staff, date range, and assessment stage.</p>
+            </div>
+            <div class="admin-actions">
+              <button type="button" class="admin-button admin-button--ghost" data-admin-refresh>Refresh</button>
+              <button type="button" class="admin-button admin-button--ghost" data-admin-export-csv>Download CSV</button>
+              <button type="button" class="admin-button" data-admin-export-json>Download JSON</button>
             </div>
           </div>
           <div class="admin-filters" data-admin-filters>

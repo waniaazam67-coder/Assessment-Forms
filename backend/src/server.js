@@ -1,10 +1,85 @@
 const http = require("node:http");
 const { URL } = require("node:url");
-const { projectRoot, host, port } = require("./config");
+const { frontendDir, host, port } = require("./config");
 const { healthCheck, initializeDatabase, listHouseholds, getHouseholdById, getFormSubmission, getSnapshot, upsertHousehold, submitForm } = require("./db");
-const { sendJson, sendText, readRequestBody, serveStatic } = require("./http");
+const { sendJson, sendText, sendDownload, readRequestBody, serveStatic } = require("./http");
 
 const allowedForms = new Set(["household", "seaf", "engineering", "inventory"]);
+const exportableDatasets = new Set(["households", "submitted-forms", "form-submissions", "seaf-responses", "snapshot"]);
+
+const escapeCsvValue = (value) => {
+  const normalized = value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+  return `"${normalized.replace(/"/g, "\"\"")}"`;
+};
+
+const toCsv = (rows) => {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return "";
+  }
+
+  const columns = Array.from(
+    rows.reduce((set, row) => {
+      Object.keys(row || {}).forEach((key) => set.add(key));
+      return set;
+    }, new Set())
+  );
+
+  const header = columns.map(escapeCsvValue).join(",");
+  const body = rows.map((row) => columns.map((column) => escapeCsvValue(row?.[column])).join(",")).join("\n");
+  return `${header}\n${body}`;
+};
+
+const toSubmittedFormsRows = (submittedForms = {}) =>
+  Object.entries(submittedForms).map(([householdId, record]) => ({
+    householdId,
+    headName: record?.headName || "",
+    householdStatus: record?.household || "Pending",
+    seafStatus: record?.seaf || "Pending",
+    engineeringStatus: record?.engineering || "Pending",
+    inventoryStatus: record?.inventory || "Pending",
+    updatedAt: record?.updatedAt || "",
+  }));
+
+const toFormSubmissionRows = (formSubmissions = {}) => {
+  const rows = [];
+
+  Object.entries(formSubmissions).forEach(([householdId, forms]) => {
+    Object.entries(forms || {}).forEach(([formKey, entry]) => {
+      rows.push({
+        householdId,
+        formKey,
+        submittedAt: entry?.submittedAt || "",
+        payload: entry?.payload || {},
+      });
+    });
+  });
+
+  return rows;
+};
+
+const toSeafResponseRows = (seafResponses = {}) =>
+  Object.entries(seafResponses).map(([householdId, entry]) => ({
+    householdId,
+    submittedAt: entry?.submittedAt || "",
+    payload: entry?.payload || {},
+  }));
+
+const getExportPayload = (snapshot, dataset) => {
+  switch (dataset) {
+    case "households":
+      return snapshot.households || [];
+    case "submitted-forms":
+      return toSubmittedFormsRows(snapshot.submittedForms);
+    case "form-submissions":
+      return toFormSubmissionRows(snapshot.formSubmissions);
+    case "seaf-responses":
+      return toSeafResponseRows(snapshot.seafResponses);
+    case "snapshot":
+      return snapshot;
+    default:
+      return null;
+  }
+};
 
 const handleApi = async (req, res, pathname) => {
   if (req.method === "OPTIONS") {
@@ -23,6 +98,52 @@ const handleApi = async (req, res, pathname) => {
 
   if (req.method === "GET" && pathname === "/api/db") {
     sendJson(res, 200, await getSnapshot());
+    return true;
+  }
+
+  if (req.method === "GET" && pathname === "/api/export") {
+    const requestUrl = new URL(req.url || "/", `http://${req.headers.host || `${host}:${port}`}`);
+    const dataset = String(requestUrl.searchParams.get("dataset") || "households").trim().toLowerCase();
+    const format = String(requestUrl.searchParams.get("format") || "json").trim().toLowerCase();
+
+    if (!exportableDatasets.has(dataset)) {
+      sendJson(res, 400, { error: "Unsupported export dataset." });
+      return true;
+    }
+
+    if (!["json", "csv"].includes(format)) {
+      sendJson(res, 400, { error: "Unsupported export format." });
+      return true;
+    }
+
+    if (dataset === "snapshot" && format === "csv") {
+      sendJson(res, 400, { error: "Snapshot export is only available as JSON." });
+      return true;
+    }
+
+    const snapshot = await getSnapshot();
+    const payload = getExportPayload(snapshot, dataset);
+    const dateStamp = new Date().toISOString().slice(0, 10);
+
+    if (format === "json") {
+      sendDownload(
+        res,
+        200,
+        `${JSON.stringify(payload, null, 2)}\n`,
+        `shehersaaz-${dataset}-${dateStamp}.json`,
+        "application/json; charset=utf-8"
+      );
+      return true;
+    }
+
+    const rows = Array.isArray(payload) ? payload : [];
+    sendDownload(
+      res,
+      200,
+      toCsv(rows),
+      `shehersaaz-${dataset}-${dateStamp}.csv`,
+      "text/csv; charset=utf-8"
+    );
     return true;
   }
 
@@ -125,7 +246,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    const served = serveStatic(req, res, pathname, projectRoot);
+    const served = serveStatic(req, res, pathname, frontendDir);
     if (served) {
       return;
     }

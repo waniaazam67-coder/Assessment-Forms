@@ -36,6 +36,16 @@ SELECT * FROM form_submissions ORDER BY submitted_at DESC;
 You can also inspect a combined snapshot through:
 
 - `GET /api/db`
+- `GET /api/export?dataset=households&format=csv`
+- `GET /api/export?dataset=snapshot&format=json`
+
+Supported export datasets:
+
+- `households`
+- `submitted-forms`
+- `form-submissions`
+- `seaf-responses`
+- `snapshot` (JSON only)
 
 ## Local setup
 
@@ -43,3 +53,10 @@ You can also inspect a combined snapshot through:
 2. Update the MySQL credentials for your machine or deployment.
 3. Run `npm install` in `backend/`.
 4. Start the app with `npm start` from the project root.
+5. Open `http://127.0.0.1:3000/pages/index.html` for the forms or `http://127.0.0.1:3000/pages/admin-dashboard/index.html` for the admin login.
+
+## Project structure
+
+- `frontend/` contains the static UI files such as `pages/`, `assets/`, and `sw.js`.
+- `backend/` contains the Node.js server, database config, and MySQL logic.
+- The project root keeps shared top-level files such as `package.json`, logs, and SQL files.

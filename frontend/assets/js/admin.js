@@ -7,6 +7,7 @@ const eligibleHouseholdsStorageKey = "shehersaaz-eligible-households";
 const submittedFormsStorageKey = "shehersaaz-submitted-forms";
 const seafResponsesStorageKey = "shehersaaz-seaf-responses";
 const householdRecordsStorageKey = "shehersaaz-household-records";
+const backendBaseUrl = window.location.protocol === "file:" ? "http://127.0.0.1:3000" : window.location.origin;
 
 function readJson(storage, key, fallback) {
   try {
@@ -22,7 +23,161 @@ function readJson(storage, key, fallback) {
   }
 }
 
-function getHouseholdRecords() {
+async function apiJsonRequest(path) {
+  const response = await fetch(`${backendBaseUrl}${path}`, {
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+function sortRecords(records) {
+  return [...records].sort((left, right) => {
+    if (left.surveyDate && right.surveyDate && left.surveyDate !== right.surveyDate) {
+      return String(right.surveyDate).localeCompare(String(left.surveyDate));
+    }
+
+    return String(right.householdId || "").localeCompare(String(left.householdId || ""));
+  });
+}
+
+function buildRecordsFromSnapshot(snapshot = {}) {
+  const households = Array.isArray(snapshot.households) ? snapshot.households : [];
+  const submittedForms = snapshot.submittedForms && typeof snapshot.submittedForms === "object" ? snapshot.submittedForms : {};
+  const seafResponses = snapshot.seafResponses && typeof snapshot.seafResponses === "object" ? snapshot.seafResponses : {};
+  const generatedIds = Array.isArray(snapshot.generatedIds) ? snapshot.generatedIds : [];
+  const map = new Map();
+
+  households.forEach((record) => {
+    if (!record?.householdId) {
+      return;
+    }
+
+    const submission = submittedForms[record.householdId] || {};
+    map.set(record.householdId, {
+      householdId: record.householdId,
+      headName: record.headName || submission.headName || "-",
+      surveyDate: record.surveyDate || "",
+      city: record.city || "",
+      ucnc: record.ucnc || "",
+      address: record.address || "",
+      catchmentArea: record.catchmentArea || "",
+      tankSpace: record.tankSpace || "",
+      cmoName: record.cmoName || record.enumeratorName || "",
+      engineerName: record.engineerName || "",
+      engineerEmploymentCode: record.engineerEmploymentCode || "",
+      eligibilityStatus: record.eligibilityStatus || record.status || "",
+      status: {
+        household: submission.household || "Pending",
+        seaf: submission.seaf || (record.stageStatus?.seaf ? "Submitted" : "Pending"),
+        engineering: submission.engineering || (record.stageStatus?.engineering ? "Submitted" : "Pending"),
+        inventory: submission.inventory || (record.stageStatus?.inventory ? "Submitted" : "Pending"),
+      },
+      stageStatus: {
+        seaf: Boolean(record.stageStatus?.seaf || submission.seaf === "Submitted"),
+        engineering: Boolean(record.stageStatus?.engineering || submission.engineering === "Submitted"),
+        inventory: Boolean(record.stageStatus?.inventory || submission.inventory === "Submitted"),
+      },
+    });
+  });
+
+  Object.entries(submittedForms).forEach(([householdId, record]) => {
+    if (!householdId) {
+      return;
+    }
+
+    const existing = map.get(householdId) || { householdId };
+    map.set(householdId, {
+      ...existing,
+      householdId,
+      headName: existing.headName || record.headName || "-",
+      eligibilityStatus: existing.eligibilityStatus || "",
+      status: {
+        household: record.household || existing.status?.household || "Pending",
+        seaf: record.seaf || existing.status?.seaf || "Pending",
+        engineering: record.engineering || existing.status?.engineering || "Pending",
+        inventory: record.inventory || existing.status?.inventory || "Pending",
+      },
+      stageStatus: {
+        seaf: Boolean(existing.stageStatus?.seaf || record.seaf === "Submitted"),
+        engineering: Boolean(existing.stageStatus?.engineering || record.engineering === "Submitted"),
+        inventory: Boolean(existing.stageStatus?.inventory || record.inventory === "Submitted"),
+      },
+    });
+  });
+
+  Object.keys(seafResponses).forEach((householdId) => {
+    if (!map.has(householdId)) {
+      map.set(householdId, {
+        householdId,
+        headName: "-",
+        surveyDate: "",
+        city: "",
+        ucnc: "",
+        address: "",
+        catchmentArea: "",
+        tankSpace: "",
+        cmoName: "",
+        engineerName: "",
+        engineerEmploymentCode: "",
+        eligibilityStatus: "",
+        status: {
+          household: "Pending",
+          seaf: "Submitted",
+          engineering: "Pending",
+          inventory: "Pending",
+        },
+        stageStatus: {
+          seaf: true,
+          engineering: false,
+          inventory: false,
+        },
+      });
+    }
+  });
+
+  generatedIds.forEach((householdId) => {
+    if (typeof householdId !== "string" || !householdId.trim() || map.has(householdId)) {
+      return;
+    }
+
+    map.set(householdId, {
+      householdId,
+      headName: "-",
+      surveyDate: "",
+      city: "",
+      ucnc: "",
+      address: "",
+      catchmentArea: "",
+      tankSpace: "",
+      cmoName: "",
+      engineerName: "",
+      engineerEmploymentCode: "",
+      eligibilityStatus: "",
+      status: {
+        household: "Pending",
+        seaf: "Pending",
+        engineering: "Pending",
+        inventory: "Pending",
+      },
+      stageStatus: {
+        seaf: false,
+        engineering: false,
+        inventory: false,
+      },
+    });
+  });
+
+  return sortRecords(Array.from(map.values()));
+}
+
+function buildRecordsFromLocalStorage() {
   const storedRecords = readJson(localStorage, householdRecordsStorageKey, []);
   const generatedIds = readJson(localStorage, generatedIdsStorageKey, []);
   const eligible = readJson(localStorage, eligibleHouseholdsStorageKey, []);
@@ -55,6 +210,12 @@ function getHouseholdRecords() {
       engineerName: record.engineerName || "",
       engineerEmploymentCode: record.engineerEmploymentCode || "",
       eligibilityStatus: record.status || record.eligibilityStatus || (eligibleIds.has(record.householdId) ? "passed" : "failed"),
+      status: {
+        household: submission.household || "Pending",
+        seaf: submission.seaf || "Pending",
+        engineering: submission.engineering || "Pending",
+        inventory: submission.inventory || "Pending",
+      },
       stageStatus: {
         seaf: Boolean(record.stageStatus?.seaf || submission.seaf === "Submitted"),
         engineering: Boolean(record.stageStatus?.engineering || submission.engineering === "Submitted"),
@@ -88,6 +249,12 @@ function getHouseholdRecords() {
       householdId,
       headName: existing.headName || record.headName || "-",
       engineerName: existing.engineerName || record.engineerName || "",
+      status: {
+        household: record.household || existing.status?.household || "Pending",
+        seaf: record.seaf || existing.status?.seaf || "Pending",
+        engineering: record.engineering || existing.status?.engineering || "Pending",
+        inventory: record.inventory || existing.status?.inventory || "Pending",
+      },
       stageStatus: {
         seaf: Boolean(existing.stageStatus?.seaf || record.seaf === "Submitted"),
         engineering: Boolean(existing.stageStatus?.engineering || record.engineering === "Submitted"),
@@ -111,6 +278,12 @@ function getHouseholdRecords() {
         engineerName: "",
         engineerEmploymentCode: "",
         eligibilityStatus: eligibleIds.has(householdId) ? "passed" : "failed",
+        status: {
+          household: "Pending",
+          seaf: "Submitted",
+          engineering: "Pending",
+          inventory: "Pending",
+        },
         stageStatus: {
           seaf: true,
           engineering: false,
@@ -138,6 +311,12 @@ function getHouseholdRecords() {
       engineerName: "",
       engineerEmploymentCode: "",
       eligibilityStatus: eligibleIds.has(householdId) ? "passed" : "failed",
+      status: {
+        household: submitted[householdId]?.household || "Pending",
+        seaf: submitted[householdId]?.seaf || "Pending",
+        engineering: submitted[householdId]?.engineering || "Pending",
+        inventory: submitted[householdId]?.inventory || "Pending",
+      },
       stageStatus: {
         seaf: Boolean(submitted[householdId]?.seaf === "Submitted"),
         engineering: Boolean(submitted[householdId]?.engineering === "Submitted"),
@@ -146,29 +325,16 @@ function getHouseholdRecords() {
     });
   });
 
-  return Array.from(map.values()).sort((left, right) => {
-    if (left.surveyDate && right.surveyDate && left.surveyDate !== right.surveyDate) {
-      return right.surveyDate.localeCompare(left.surveyDate);
-    }
-
-    return String(right.householdId).localeCompare(String(left.householdId));
-  });
+  return sortRecords(Array.from(map.values()));
 }
 
-function getOverviewStats() {
-  const records = getHouseholdRecords();
-  const submitted = readJson(localStorage, submittedFormsStorageKey, {});
-
+function getOverviewStats(records) {
   const totalAssessed = records.length;
-  const eligibleCount = records.filter((record) => record?.eligibilityStatus === "passed").length;
-  const notEligibleCount = records.filter((record) => record?.eligibilityStatus === "failed").length;
-
-  const submittedRecords = Object.values(submitted);
-  const seafDone = records.filter((record) => record?.stageStatus?.seaf || submitted[record.householdId]?.seaf === "Submitted").length;
-  const engineeringDone = records.filter((record) => record?.stageStatus?.engineering || submitted[record.householdId]?.engineering === "Submitted").length;
-  const readyCount = submittedRecords.filter(
-    (record) => record?.seaf === "Submitted" && record?.engineering === "Submitted" && record?.inventory === "Submitted"
-  ).length;
+  const eligibleCount = records.filter((record) => String(record?.eligibilityStatus || "").toLowerCase() === "passed").length;
+  const notEligibleCount = records.filter((record) => String(record?.eligibilityStatus || "").toLowerCase() === "failed").length;
+  const seafDone = records.filter((record) => record?.stageStatus?.seaf).length;
+  const engineeringDone = records.filter((record) => record?.stageStatus?.engineering).length;
+  const readyCount = records.filter((record) => record?.stageStatus?.seaf && record?.stageStatus?.engineering && record?.stageStatus?.inventory).length;
 
   return [
     {
@@ -176,51 +342,45 @@ function getOverviewStats() {
       value: totalAssessed,
       icon: "households",
       tone: "mint",
-      note: "Includes eligible and not eligible",
     },
     {
       label: "Eligible / Passed households",
       value: eligibleCount,
       icon: "eligible",
       tone: "sky",
-      note: "Passed the first-stage screening",
     },
     {
       label: "Not eligible",
       value: notEligibleCount,
       icon: "rejected",
       tone: "rose",
-      note: "Did not qualify in household info",
     },
     {
       label: "Socioeconomic assessment done",
       value: seafDone,
       icon: "seaf",
       tone: "gold",
-      note: "SEAF submitted",
     },
     {
       label: "Engineering assessment done",
       value: engineeringDone,
       icon: "engineering",
       tone: "peach",
-      note: "Engineering form submitted",
     },
     {
       label: "Ready for RWHU installation",
       value: readyCount,
       icon: "ready",
       tone: "mint",
-      note: "All assessments completed",
     },
   ];
 }
 
 function countSubmitted(record) {
   const status = record.status || {};
-  const seaf = status.seaf === "Submitted";
-  const engineering = status.engineering === "Submitted";
-  const inventory = status.inventory === "Submitted";
+  const seaf = record.stageStatus?.seaf || status.seaf === "Submitted";
+  const engineering = record.stageStatus?.engineering || status.engineering === "Submitted";
+  const inventory = record.stageStatus?.inventory || status.inventory === "Submitted";
 
   return {
     seaf,
@@ -276,13 +436,13 @@ function metricIcon(kind) {
   return icons[kind] || icons.households;
 }
 
-function buildMetrics(records) {
-  return getOverviewStats();
-}
-
 function renderMetrics(container, records) {
+  if (!container) {
+    return;
+  }
+
   container.innerHTML = "";
-  buildMetrics(records).forEach((metric) => {
+  getOverviewStats(records).forEach((metric) => {
     const item = document.createElement("article");
     item.className = `admin-metric admin-metric--${metric.tone || "mint"}`;
     item.innerHTML = `
@@ -293,43 +453,6 @@ function renderMetrics(container, records) {
       </div>
     `;
     container.append(item);
-  });
-}
-
-function renderHouseholds(container, records, searchTerm = "") {
-  const normalizedTerm = searchTerm.trim().toLowerCase();
-  const filtered = records.filter((record) => {
-    if (!normalizedTerm) {
-      return true;
-    }
-
-    return `${record.householdId} ${record.headName}`.toLowerCase().includes(normalizedTerm);
-  });
-
-  container.innerHTML = "";
-
-  if (filtered.length === 0) {
-    const row = document.createElement("tr");
-    row.innerHTML = `<td colspan="6">No households found.</td>`;
-    container.append(row);
-    return;
-  }
-
-  filtered.forEach((record) => {
-    const state = countSubmitted(record);
-    const statusText = state.complete ? "Completed" : "In Progress";
-    const statusColor = state.complete ? "green" : "gold";
-
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${record.householdId}</td>
-      <td>${record.headName}</td>
-      <td><span class="admin-chip ${state.seaf ? "admin-chip--done" : "admin-chip--pending"}">${state.seaf ? "Submitted" : "Pending"}</span></td>
-      <td><span class="admin-chip ${state.engineering ? "admin-chip--done" : "admin-chip--pending"}">${state.engineering ? "Submitted" : "Pending"}</span></td>
-      <td><span class="admin-chip ${state.inventory ? "admin-chip--done" : "admin-chip--pending"}">${state.inventory ? "Submitted" : "Pending"}</span></td>
-      <td><span class="admin-chip admin-chip--${statusColor}">${statusText}</span></td>
-    `;
-    container.append(row);
   });
 }
 
@@ -430,7 +553,16 @@ function bootLoginPage() {
   });
 }
 
-function bootDashboardPage() {
+function triggerExport(dataset, format) {
+  const link = document.createElement("a");
+  link.href = `${backendBaseUrl}/api/export?dataset=${encodeURIComponent(dataset)}&format=${encodeURIComponent(format)}`;
+  link.rel = "noopener";
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+async function bootDashboardPage() {
   const session = readJson(sessionStorage, AUTH_KEY, null);
   if (!session) {
     window.location.href = "index.html";
@@ -443,6 +575,10 @@ function bootDashboardPage() {
   const pages = Array.from(document.querySelectorAll("[data-admin-page]"));
   const navLinks = Array.from(document.querySelectorAll(".admin-nav__link"));
   const tableBody = document.querySelector("[data-admin-data-table-body]");
+  const dataSource = document.querySelector("[data-admin-data-source]");
+  const refreshButton = document.querySelector("[data-admin-refresh]");
+  const exportCsvButton = document.querySelector("[data-admin-export-csv]");
+  const exportJsonButton = document.querySelector("[data-admin-export-json]");
   const filters = {
     location: document.querySelector("[data-admin-filter-location]"),
     status: document.querySelector("[data-admin-filter-status]"),
@@ -453,16 +589,14 @@ function bootDashboardPage() {
   };
   const logout = document.querySelector("[data-admin-logout]");
 
+  let records = [];
+  let usingBackend = false;
+
   if (name) {
     name.textContent = session.name || "Admin";
   }
   if (email) {
     email.textContent = session.email || ADMIN_EMAIL;
-  }
-
-  const records = getHouseholdRecords();
-  if (metrics) {
-    renderMetrics(metrics, records);
   }
 
   const setActivePage = (pageId) => {
@@ -491,12 +625,56 @@ function bootDashboardPage() {
     });
   };
 
+  const loadRecords = async () => {
+    if (dataSource) {
+      dataSource.textContent = "Loading latest records...";
+    }
+
+    try {
+      const snapshot = await apiJsonRequest("/api/db");
+      records = buildRecordsFromSnapshot(snapshot);
+      usingBackend = true;
+      if (dataSource) {
+        dataSource.textContent = "Connected to Node.js + MySQL. Downloads use live database data.";
+      }
+    } catch (error) {
+      records = buildRecordsFromLocalStorage();
+      usingBackend = false;
+      if (dataSource) {
+        dataSource.textContent = "Backend is unavailable. Showing browser-stored data only.";
+      }
+    }
+
+    renderMetrics(metrics, records);
+    renderTable();
+  };
+
   Object.values(filters).forEach((control) => {
     control?.addEventListener("input", renderTable);
     control?.addEventListener("change", renderTable);
   });
 
-  renderTable();
+  refreshButton?.addEventListener("click", () => {
+    void loadRecords();
+  });
+
+  exportCsvButton?.addEventListener("click", () => {
+    if (!usingBackend) {
+      window.alert("Start the Node.js backend first so the CSV can be downloaded from MySQL.");
+      return;
+    }
+
+    triggerExport("households", "csv");
+  });
+
+  exportJsonButton?.addEventListener("click", () => {
+    if (!usingBackend) {
+      window.alert("Start the Node.js backend first so the JSON can be downloaded from MySQL.");
+      return;
+    }
+
+    triggerExport("snapshot", "json");
+  });
 
   navLinks.forEach((link) => {
     link.addEventListener("click", (event) => {
@@ -516,6 +694,7 @@ function bootDashboardPage() {
   });
 
   setActivePage(window.location.hash.replace("#", "") || "overview");
+  await loadRecords();
 
   logout?.addEventListener("click", () => {
     sessionStorage.removeItem(AUTH_KEY);
@@ -528,6 +707,5 @@ if (document.querySelector("[data-admin-login-form]")) {
 }
 
 if (document.querySelector("[data-admin-metrics]")) {
-  bootDashboardPage();
+  void bootDashboardPage();
 }
-

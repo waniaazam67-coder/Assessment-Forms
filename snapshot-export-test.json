@@ -1,0 +1,119 @@
+{
+  "households": [
+    {
+      "city": "Rawalpindi",
+      "ucnc": "UC 1",
+      "status": "passed",
+      "address": "Test Address",
+      "cmoName": "Sakina Bashir",
+      "headName": "Test User",
+      "tankSpace": "Yes",
+      "surveyDate": "2026-04-23",
+      "householdId": "RWHU-TEST-001",
+      "stageStatus": {
+        "household": "Submitted"
+      },
+      "catchmentArea": "Yes",
+      "enumeratorName": "Sakina Bashir",
+      "respondentCnic": "12345-6789012-3",
+      "respondentName": "Test User",
+      "respondentGender": "Man",
+      "eligibilityStatus": "passed",
+      "headCnic": "",
+      "engineerName": "",
+      "engineerEmploymentCode": "",
+      "updatedAt": "2026-04-23 10:53:08.030"
+    },
+    {
+      "city": "Rawalpindi",
+      "ucnc": "UC 2",
+      "status": "passed",
+      "address": "abc",
+      "cmoName": "Sakina Bashir",
+      "headCnic": "",
+      "headName": "abc",
+      "tankSpace": "Yes",
+      "updatedAt": "2026-04-23 10:51:15.206",
+      "surveyDate": "2026-04-22",
+      "householdId": "RWHU-TAB-FBZ",
+      "stageStatus": {},
+      "catchmentArea": "Yes",
+      "enumeratorName": "Sakina Bashir",
+      "respondentCnic": "12345-6789123-4",
+      "respondentName": "abc",
+      "respondentGender": "Woman",
+      "eligibilityStatus": "passed",
+      "engineerName": "",
+      "engineerEmploymentCode": ""
+    }
+  ],
+  "submittedForms": {
+    "RWHU-TEST-001": {
+      "headName": "Test User",
+      "household": "Submitted",
+      "seaf": "Pending",
+      "engineering": "Pending",
+      "inventory": "Pending",
+      "updatedAt": "2026-04-23 10:53:08.028"
+    },
+    "RWHU-TAB-FBZ": {
+      "headName": "abc",
+      "household": "Submitted",
+      "seaf": "Pending",
+      "engineering": "Pending",
+      "inventory": "Pending",
+      "updatedAt": "2026-04-23 10:50:29.162"
+    }
+  },
+  "seafResponses": {},
+  "formSubmissions": {
+    "RWHU-TEST-001": {
+      "household": {
+        "payload": {
+          "city": "Rawalpindi",
+          "ucnc": "UC 1",
+          "address": "Test Address",
+          "headName": "Test User",
+          "tankSpace": "Yes",
+          "surveyDate": "2026-04-23",
+          "catchmentArea": "Yes",
+          "enumeratorName": "Sakina Bashir",
+          "respondentCnic": "12345-6789012-3",
+          "respondentName": "Test User",
+          "respondentGender": "Man",
+          "eligibilityStatus": "passed"
+        },
+        "submittedAt": "2026-04-23 10:53:08.029"
+      }
+    },
+    "RWHU-TAB-FBZ": {
+      "household": {
+        "payload": {
+          "city": "Rawalpindi",
+          "ucnc": "UC 2",
+          "status": "passed",
+          "address": "abc",
+          "cmoName": "Sakina Bashir",
+          "headCnic": "",
+          "headName": "abc",
+          "tankSpace": "Yes",
+          "surveyDate": "2026-04-22",
+          "householdId": "RWHU-TAB-FBZ",
+          "stageStatus": {},
+          "catchmentArea": "Yes",
+          "enumeratorName": "Sakina Bashir",
+          "respondentCnic": "12345-6789123-4",
+          "respondentName": "abc",
+          "respondentGender": "Woman",
+          "eligibilityStatus": "passed"
+        },
+        "submittedAt": "2026-04-22 10:39:15.668"
+      }
+    }
+  },
+  "generatedIds": [
+    "RWHU-TEST-001",
+    "RWHU-TAB-FBZ"
+  ],
+  "updatedAt": "2026-04-23 10:53:08.030"
+}

@@ -173,16 +173,45 @@ window.setTimeout(() => {
   void flushPendingSyncQueue();
 }, 0);
 
-const getHouseholdRecordById = (householdId) => {
+const readSelectedHousehold = () => {
+  try {
+    const storedHousehold = sessionStorage.getItem(selectedHouseholdStorageKey);
+    return storedHousehold ? JSON.parse(storedHousehold) : null;
+  } catch (error) {
+    return null;
+  }
+};
+
+const writeSelectedHousehold = (household) => {
+  if (!household || typeof household !== "object") {
+    return;
+  }
+
+  try {
+    sessionStorage.setItem(selectedHouseholdStorageKey, JSON.stringify(household));
+  } catch (error) {
+    // Ignore sessionStorage write errors.
+  }
+};
+
+const mergeSelectedHousehold = (patch = {}) => {
+  const currentHousehold = readSelectedHousehold();
+  const householdId = patch.householdId || currentHousehold?.householdId;
   if (!householdId) {
     return null;
   }
 
-  const records = readHouseholdRecords();
-  return records.find((record) => record?.householdId === householdId) || null;
+  const nextHousehold = {
+    ...(currentHousehold || {}),
+    ...patch,
+    householdId,
+  };
+
+  writeSelectedHousehold(nextHousehold);
+  return nextHousehold;
 };
 
-const upsertHouseholdRecord = (householdId, patch = {}) => {
+const cacheHouseholdRecord = (householdId, patch = {}) => {
   if (!householdId) {
     return null;
   }
@@ -203,18 +232,120 @@ const upsertHouseholdRecord = (householdId, patch = {}) => {
   }
 
   writeHouseholdRecords(records);
-  queueBackendSync("/api/households", {
-    householdId,
-    ...nextRecord,
-  });
   return nextRecord;
+};
+
+const getHouseholdRecordById = (householdId) => {
+  if (!householdId) {
+    return null;
+  }
+
+  const records = readHouseholdRecords();
+  return records.find((record) => record?.householdId === householdId) || null;
+};
+
+const upsertHouseholdRecord = (householdId, patch = {}, options = {}) => {
+  const nextRecord = cacheHouseholdRecord(householdId, patch);
+  if (!nextRecord) {
+    return null;
+  }
+
+  if (options.syncBackend !== false) {
+    queueBackendSync("/api/households", {
+      householdId,
+      ...nextRecord,
+    });
+  }
+
+  return nextRecord;
+};
+
+const parseAreaValue = (value) => {
+  const area = Number.parseFloat(String(value || "").replace(/,/g, "").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(area) ? area : 0;
+};
+
+const getEngineeringAreaFromSource = (source = {}) => {
+  if (!source || typeof source !== "object") {
+    return 0;
+  }
+
+  return parseAreaValue(
+    source.engineeringCatchmentTotalArea ||
+    source.engineeringCatchmentArea ||
+    source.catchmentTotalArea ||
+    source.catchmentArea
+  );
+};
+
+const hydrateHouseholdRecordFromBackend = async (householdId) => {
+  if (!householdId) {
+    return null;
+  }
+
+  try {
+    const record = await apiJsonRequest(`/api/households/${encodeURIComponent(householdId)}`);
+    if (record && typeof record === "object") {
+      cacheHouseholdRecord(householdId, record);
+      mergeSelectedHousehold({
+        householdId,
+        headName: record.headName || readSelectedHousehold()?.headName || "",
+        city: record.city || readSelectedHousehold()?.city || "",
+      });
+      return record;
+    }
+  } catch (error) {
+    // Fall back to cached frontend data when backend data is unavailable.
+  }
+
+  return getHouseholdRecordById(householdId);
+};
+
+const getFormSubmissionFromBackend = async (formKey, householdId) => {
+  if (!formKey || !householdId) {
+    return null;
+  }
+
+  try {
+    const entry = await apiJsonRequest(`/api/forms/${encodeURIComponent(formKey)}/${encodeURIComponent(householdId)}`);
+    return entry?.payload && typeof entry.payload === "object" ? entry.payload : null;
+  } catch (error) {
+    return null;
+  }
 };
 
 const getEngineeringCatchmentAreaForHousehold = (householdId) => {
   const record = getHouseholdRecordById(householdId);
-  const rawArea = record?.engineeringCatchmentTotalArea || record?.engineeringCatchmentArea || "";
-  const area = Number.parseFloat(String(rawArea).replace(/,/g, ""));
-  return Number.isFinite(area) ? area : 0;
+  return getEngineeringAreaFromSource(record);
+};
+
+const resolveEngineeringCatchmentArea = async (householdId) => {
+  if (!householdId) {
+    return 0;
+  }
+
+  const cachedArea = getEngineeringCatchmentAreaForHousehold(householdId);
+  if (cachedArea > 0) {
+    return cachedArea;
+  }
+
+  const householdRecord = await hydrateHouseholdRecordFromBackend(householdId);
+  const backendArea = getEngineeringAreaFromSource(householdRecord);
+  if (backendArea > 0) {
+    return backendArea;
+  }
+
+  const engineeringSubmission = await getFormSubmissionFromBackend("engineering", householdId);
+  const submissionArea = getEngineeringAreaFromSource(engineeringSubmission);
+  if (submissionArea > 0) {
+    cacheHouseholdRecord(householdId, {
+      engineeringCatchmentArea: engineeringSubmission?.engineeringCatchmentArea || engineeringSubmission?.catchmentTotalArea || String(submissionArea),
+      engineeringCatchmentTotalArea: engineeringSubmission?.engineeringCatchmentTotalArea || engineeringSubmission?.catchmentTotalArea || String(submissionArea),
+    });
+    return submissionArea;
+  }
+
+  return 0;
 };
 
 const getRecommendedTankSize = (catchmentArea) => {
@@ -378,7 +509,11 @@ const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", sync
   };
 
   writeSubmittedForms(submittedForms);
+  const householdPatch = syncOptions.householdPatch && typeof syncOptions.householdPatch === "object"
+    ? syncOptions.householdPatch
+    : {};
   upsertHouseholdRecord(householdId, {
+    ...householdPatch,
     headName: currentHeadName || existing.headName || "",
     stageStatus: {
       seaf: submittedForms[householdId].seaf,
@@ -386,12 +521,22 @@ const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", sync
       inventory: submittedForms[householdId].inventory,
     },
   });
+
+  const selectedHousehold = readSelectedHousehold();
+  if (selectedHousehold?.householdId === householdId) {
+    mergeSelectedHousehold({
+      ...householdPatch,
+      householdId,
+      headName: currentHeadName || existing.headName || selectedHousehold.headName || "",
+    });
+  }
+
   queueBackendSync(`/api/forms/${formKey}/submit`, {
     householdId,
     headName: currentHeadName || existing.headName || "",
     status,
     payload: syncOptions.payload || {},
-    householdPatch: syncOptions.householdPatch || {},
+    householdPatch,
   });
 
   if (isHouseholdFullySubmitted(submittedForms[householdId])) {
@@ -618,27 +763,38 @@ const inventoryOtherItemsList = document.querySelector("[data-other-items-list]"
 const inventoryQuantityInputs = Array.from(document.querySelectorAll("[data-inventory-quantity]"));
 const inventorySelectInputs = Array.from(document.querySelectorAll("[data-inventory-select]"));
 
+const syncSelectedHouseholdFields = (selectedHousehold) => {
+  if (!selectedHousehold || typeof selectedHousehold !== "object") {
+    return;
+  }
+
+  if (selectedHouseholdSummary) {
+    selectedHouseholdSummary.hidden = false;
+    selectedHouseholdSummary.textContent = `Selected household: ${selectedHousehold.householdId || ""} - ${selectedHousehold.headName || ""}`;
+  }
+
+  if (selectedHouseholdIdInput && !selectedHouseholdIdInput.value) {
+    selectedHouseholdIdInput.value = selectedHousehold.householdId || "";
+  }
+
+  if (selectedHouseholdNameInput) {
+    selectedHouseholdNameInput.value = selectedHousehold.headName || selectedHouseholdNameInput.value || "";
+  }
+};
+
 if (selectedHouseholdSummary || selectedHouseholdIdInput || selectedHouseholdNameInput) {
-  try {
-    const storedHousehold = sessionStorage.getItem(selectedHouseholdStorageKey);
-    const selectedHousehold = storedHousehold ? JSON.parse(storedHousehold) : null;
-
-    if (selectedHousehold) {
-      if (selectedHouseholdSummary) {
-        selectedHouseholdSummary.hidden = false;
-        selectedHouseholdSummary.textContent = `Selected household: ${selectedHousehold.householdId} - ${selectedHousehold.headName}`;
+  const selectedHousehold = readSelectedHousehold();
+  if (selectedHousehold) {
+    syncSelectedHouseholdFields(selectedHousehold);
+    void (async () => {
+      const record = await hydrateHouseholdRecordFromBackend(selectedHousehold.householdId || "");
+      if (record) {
+        syncSelectedHouseholdFields({
+          ...selectedHousehold,
+          ...record,
+        });
       }
-
-      if (selectedHouseholdIdInput && !selectedHouseholdIdInput.value) {
-        selectedHouseholdIdInput.value = selectedHousehold.householdId || "";
-      }
-
-      if (selectedHouseholdNameInput && !selectedHouseholdNameInput.value) {
-        selectedHouseholdNameInput.value = selectedHousehold.headName || "";
-      }
-    }
-  } catch (error) {
-    // Ignore sessionStorage parsing errors.
+    })();
   }
 }
 
@@ -664,9 +820,9 @@ if (inventoryForm) {
     return card;
   };
 
-  const applyInventoryDefaults = () => {
+  const applyInventoryDefaults = async () => {
     const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
-    const catchmentArea = getEngineeringCatchmentAreaForHousehold(householdId);
+    const catchmentArea = await resolveEngineeringCatchmentArea(householdId);
     const recommendedTankSize = getRecommendedTankSize(catchmentArea);
 
     if (inventoryCatchmentAreaInput) {
@@ -714,7 +870,7 @@ if (inventoryForm) {
     }
   };
 
-  applyInventoryDefaults();
+  void applyInventoryDefaults();
 
   if (inventoryWaterTankSelect) {
     inventoryWaterTankSelect.addEventListener("change", () => {
@@ -1015,6 +1171,22 @@ if (engineeringForm) {
   const waterNeedDailyInput = engineeringForm.querySelector("[data-water-need-daily]");
   const waterNeedStorageInput = engineeringForm.querySelector("[data-water-need-storage]");
 
+  const setSelectValue = (select, value) => {
+    if (!select || !value) {
+      return;
+    }
+
+    const optionExists = Array.from(select.options).some((option) => option.value === value);
+    if (!optionExists) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      select.append(option);
+    }
+
+    select.value = value;
+  };
+
   const syncToggleField = (checkbox) => {
     const targetName = checkbox.dataset.toggleTarget;
     if (!targetName) {
@@ -1104,7 +1276,7 @@ if (engineeringForm) {
     };
 
     const syncWaterNeedCalculations = () => {
-      if (!waterNeedAreaInput || !waterNeedSpaceInput || !waterNeedQuantityInput || !waterNeedDailyInput || !waterNeedStorageInput) {
+      if (!waterNeedAreaInput || !waterNeedSpaceInput || !waterNeedQuantityInput) {
         return;
       }
 
@@ -1120,8 +1292,14 @@ if (engineeringForm) {
       waterNeedAreaInput.value = effectiveArea > 0 ? effectiveArea.toFixed(2) : "";
       waterNeedSpaceInput.value = effectiveArea > 0 ? space.toFixed(2) : "";
       waterNeedQuantityInput.value = effectiveArea > 0 ? quantity.toFixed(2) : "";
-      waterNeedDailyInput.value = Number.isFinite(householdSize) && householdSize > 0 ? dailyNeed.toFixed(2) : "";
-      waterNeedStorageInput.value = Number.isFinite(householdSize) && householdSize > 0 ? storageNeed.toFixed(2) : "";
+
+      if (waterNeedDailyInput) {
+        waterNeedDailyInput.value = Number.isFinite(householdSize) && householdSize > 0 ? dailyNeed.toFixed(2) : "";
+      }
+
+      if (waterNeedStorageInput) {
+        waterNeedStorageInput.value = Number.isFinite(householdSize) && householdSize > 0 ? storageNeed.toFixed(2) : "";
+      }
     };
 
     if (housingWidthInput) {
@@ -1261,6 +1439,100 @@ if (engineeringForm) {
     populateSelectOptions(engineerSelect, "Select engineer", staff.engineers);
   };
 
+  const applyEngineeringDefaults = async () => {
+    const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
+    if (!householdId) {
+      return;
+    }
+
+    const householdRecord = await hydrateHouseholdRecordFromBackend(householdId);
+    const engineeringPayload = await getFormSubmissionFromBackend("engineering", householdId);
+    const source = engineeringPayload && typeof engineeringPayload === "object"
+      ? engineeringPayload
+      : householdRecord && typeof householdRecord === "object"
+        ? householdRecord
+        : null;
+
+    if (!source) {
+      return;
+    }
+
+    if (housingWidthInput && !housingWidthInput.value && source.housingWidth) {
+      housingWidthInput.value = source.housingWidth;
+    }
+
+    if (housingDepthInput && !housingDepthInput.value && source.housingDepth) {
+      housingDepthInput.value = source.housingDepth;
+    }
+
+    if (waterNeedHouseholdSizeInput && !waterNeedHouseholdSizeInput.value && source.waterNeedHouseholdSize) {
+      waterNeedHouseholdSizeInput.value = source.waterNeedHouseholdSize;
+    }
+
+    const savedCatchmentRows = Array.isArray(source.catchmentRows) ? source.catchmentRows : [];
+    savedCatchmentRows.forEach((savedRow, index) => {
+      const row = catchmentRows[index];
+      if (!row || !savedRow || typeof savedRow !== "object") {
+        return;
+      }
+
+      const widthInput = row.querySelector("[data-catchment-width]");
+      const lengthInput = row.querySelector("[data-catchment-length]");
+
+      if (widthInput && !widthInput.value && savedRow.width) {
+        widthInput.value = savedRow.width;
+      }
+
+      if (lengthInput && !lengthInput.value && savedRow.length) {
+        lengthInput.value = savedRow.length;
+      }
+
+      syncCatchmentRow(row);
+    });
+
+    if (housingAreaInput && !housingAreaInput.value && source.housingArea) {
+      housingAreaInput.value = source.housingArea;
+    }
+
+    if (catchmentTotalAreaInput && !catchmentTotalAreaInput.value && source.catchmentTotalArea) {
+      catchmentTotalAreaInput.value = source.catchmentTotalArea;
+    }
+
+    syncHousingStructureArea();
+    syncCatchmentTotalArea();
+    syncWaterNeedCalculations();
+    syncEngineerOptions();
+    setSelectValue(engineerSelect, source.engineerName || householdRecord?.engineerName || "");
+
+    if (housingAreaInput && !housingAreaInput.value && source.housingArea) {
+      housingAreaInput.value = source.housingArea;
+    }
+
+    if (catchmentTotalAreaInput && !catchmentTotalAreaInput.value && source.catchmentTotalArea) {
+      catchmentTotalAreaInput.value = source.catchmentTotalArea;
+    }
+
+    if (waterNeedAreaInput && !waterNeedAreaInput.value && source.waterNeedArea) {
+      waterNeedAreaInput.value = source.waterNeedArea;
+    }
+
+    if (waterNeedSpaceInput && !waterNeedSpaceInput.value && source.waterNeedSpace) {
+      waterNeedSpaceInput.value = source.waterNeedSpace;
+    }
+
+    if (waterNeedQuantityInput && !waterNeedQuantityInput.value && source.waterNeedQuantity) {
+      waterNeedQuantityInput.value = source.waterNeedQuantity;
+    }
+
+    if (waterNeedDailyInput && !waterNeedDailyInput.value && source.waterNeedDaily) {
+      waterNeedDailyInput.value = source.waterNeedDaily;
+    }
+
+    if (waterNeedStorageInput && !waterNeedStorageInput.value && source.engineeringTankSpace) {
+      waterNeedStorageInput.value = source.engineeringTankSpace;
+    }
+  };
+
     tankCountInputs.forEach((input) => {
       input.addEventListener("input", () => {
         const tankType = input.dataset.tankCount;
@@ -1288,6 +1560,7 @@ if (engineeringForm) {
     syncHousingStructureArea();
     syncEngineerOptions();
     syncWaterNeedCalculations();
+    void applyEngineeringDefaults();
 
   if (engineeringSubmitButton) {
     engineeringSubmitButton.addEventListener("click", () => {
@@ -1303,8 +1576,18 @@ if (engineeringForm) {
       const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
       const engineerName = engineerSelect ? engineerSelect.value.trim() : "";
       const catchmentTotalArea = catchmentTotalAreaInput ? catchmentTotalAreaInput.value.trim() : "";
+      const catchmentRowPayload = catchmentRows
+        .map((row) => ({
+          width: row.querySelector("[data-catchment-width]")?.value.trim() || "",
+          length: row.querySelector("[data-catchment-length]")?.value.trim() || "",
+          area: row.querySelector("[data-catchment-area]")?.value.trim() || "",
+        }))
+        .filter((row) => row.width || row.length || row.area);
       const engineeringPayload = {
         engineerName,
+        housingWidth: housingWidthInput?.value.trim() || "",
+        housingDepth: housingDepthInput?.value.trim() || "",
+        catchmentRows: catchmentRowPayload,
         catchmentTotalArea,
         housingArea: housingAreaInput?.value || "",
         engineeringCatchmentArea: catchmentTotalArea,
@@ -1312,6 +1595,8 @@ if (engineeringForm) {
         waterNeedArea: engineeringForm.querySelector("[data-water-need-area]")?.value || "",
         waterNeedSpace: engineeringForm.querySelector("[data-water-need-space]")?.value || "",
         waterNeedQuantity: engineeringForm.querySelector("[data-water-need-quantity]")?.value || "",
+        waterNeedHouseholdSize: waterNeedHouseholdSizeInput?.value || "",
+        waterNeedDaily: waterNeedDailyInput?.value || "",
         proposedStorageCapacity: engineeringForm.querySelector("[data-proposed-storage-capacity]")?.value || "",
         engineeringTankSpace: engineeringForm.querySelector("[data-water-need-storage]")?.value || "",
       };
@@ -1320,8 +1605,17 @@ if (engineeringForm) {
         payload: engineeringPayload,
         householdPatch: {
           engineerName,
+          housingWidth: engineeringPayload.housingWidth,
+          housingDepth: engineeringPayload.housingDepth,
+          housingArea: engineeringPayload.housingArea,
+          catchmentRows: engineeringPayload.catchmentRows,
           engineeringCatchmentArea: catchmentTotalArea,
           engineeringCatchmentTotalArea: catchmentTotalArea,
+          waterNeedArea: engineeringPayload.waterNeedArea,
+          waterNeedSpace: engineeringPayload.waterNeedSpace,
+          waterNeedQuantity: engineeringPayload.waterNeedQuantity,
+          waterNeedHouseholdSize: engineeringPayload.waterNeedHouseholdSize,
+          waterNeedDaily: engineeringPayload.waterNeedDaily,
           engineeringTankSpace: engineeringPayload.engineeringTankSpace,
           proposedStorageCapacity: engineeringPayload.proposedStorageCapacity,
         },

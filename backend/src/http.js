@@ -24,6 +24,15 @@ const sendText = (res, statusCode, text, contentType = "text/plain; charset=utf-
   res.end(text);
 };
 
+const sendDownload = (res, statusCode, body, filename, contentType) => {
+  res.writeHead(statusCode, {
+    ...sendHeaders,
+    "Content-Type": contentType,
+    "Content-Disposition": `attachment; filename="${filename}"`,
+  });
+  res.end(body);
+};
+
 const readRequestBody = async (req) => {
   const chunks = [];
 
@@ -113,6 +122,7 @@ const serveStatic = (req, res, pathname, projectRoot) => {
 module.exports = {
   sendJson,
   sendText,
+  sendDownload,
   readRequestBody,
   serveStatic,
 };

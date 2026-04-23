@@ -3,6 +3,7 @@ const dotenv = require("dotenv");
 
 const backendDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(backendDir, "..");
+const frontendDir = path.join(projectRoot, "frontend");
 
 dotenv.config({ path: path.join(backendDir, ".env") });
 
@@ -14,6 +15,7 @@ const toPort = (value, fallback) => {
 module.exports = {
   backendDir,
   projectRoot,
+  frontendDir,
   dataDir: path.join(backendDir, "data"),
   legacyDbFile: path.join(backendDir, "data", "db.json"),
   host: process.env.HOST || "127.0.0.1",

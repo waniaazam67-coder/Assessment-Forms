@@ -1,4 +1,4 @@
-const CACHE_VERSION = "shehersaaz-app-v1";
+const CACHE_VERSION = "shehersaaz-app-v2";
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [

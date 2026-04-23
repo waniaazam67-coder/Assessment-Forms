@@ -295,6 +295,12 @@ input {
   text-align: right;
 }
 
+.admin-topbar__status {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--muted);
+}
+
 .admin-hero {
   display: flex;
   justify-content: space-between;
@@ -409,6 +415,12 @@ input {
   justify-content: space-between;
   gap: 16px;
   align-items: start;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .admin-card__subtitle {
