@@ -19,7 +19,7 @@ module.exports = {
   dataDir: path.join(backendDir, "data"),
   legacyDbFile: path.join(backendDir, "data", "db.json"),
   host: process.env.HOST || "127.0.0.1",
-  port: toPort(process.env.PORT, 3000),
+  port: toPort(process.env.PORT, 4000),
   db: {
     host: process.env.DB_HOST || "localhost",
     port: toPort(process.env.DB_PORT, 3306),

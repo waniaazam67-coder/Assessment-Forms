@@ -14,9 +14,10 @@ const postRedirectMessageKey = "shehersaaz-post-redirect-message";
 const seafResponsesStorageKey = "shehersaaz-seaf-responses";
 const householdRecordsStorageKey = "shehersaaz-household-records";
 const pendingSyncQueueStorageKey = "shehersaaz-pending-sync-queue";
-const backendBaseUrl = window.location.protocol === "file:" ? "http://127.0.0.1:3000" : window.location.origin;
+const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
+const backendBaseUrl = window.location.protocol === "file:" || isLocalFrontendDev ? "http://127.0.0.1:4000" : window.location.origin;
 
-if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
+if ("serviceWorker" in navigator && window.location.protocol !== "file:" && !isLocalFrontendDev) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch((error) => {
       console.warn("Service worker registration failed:", error);
@@ -311,6 +312,83 @@ const getFormSubmissionFromBackend = async (formKey, householdId) => {
     return entry?.payload && typeof entry.payload === "object" ? entry.payload : null;
   } catch (error) {
     return null;
+  }
+};
+
+const getEditableFormControls = (form) => {
+  if (!form) {
+    return [];
+  }
+
+  return Array.from(form.querySelectorAll("input, select, textarea")).filter((control) => {
+    if (!control || control.closest("template")) {
+      return false;
+    }
+
+    const type = String(control.getAttribute("type") || "").toLowerCase();
+    if (["button", "submit", "reset", "hidden"].includes(type)) {
+      return false;
+    }
+
+    return !control.readOnly;
+  });
+};
+
+const serializeFormState = (form, meta = {}) => {
+  return {
+    version: 1,
+    meta,
+    controls: getEditableFormControls(form).map((control) => {
+      const tagName = control.tagName.toLowerCase();
+      const type = String(control.getAttribute("type") || "").toLowerCase();
+
+      if (type === "checkbox" || type === "radio") {
+        return {
+          tagName,
+          type,
+          checked: Boolean(control.checked),
+        };
+      }
+
+      return {
+        tagName,
+        type,
+        value: control.value,
+      };
+    }),
+  };
+};
+
+const restoreFormState = (form, formState) => {
+  if (!form || !formState || !Array.isArray(formState.controls)) {
+    return;
+  }
+
+  const controls = getEditableFormControls(form);
+  formState.controls.forEach((savedControl, index) => {
+    const control = controls[index];
+    if (!control || !savedControl) {
+      return;
+    }
+
+    const type = String(control.getAttribute("type") || "").toLowerCase();
+    if (type === "checkbox" || type === "radio") {
+      control.checked = Boolean(savedControl.checked);
+      return;
+    }
+
+    control.value = savedControl.value ?? "";
+  });
+};
+
+const ensureRepeatableCount = (container, template, targetCount, addItem) => {
+  if (!container || !template || typeof addItem !== "function") {
+    return;
+  }
+
+  const normalizedTarget = Math.max(1, Number.parseInt(String(targetCount || "1"), 10) || 1);
+  while (container.children.length < normalizedTarget) {
+    addItem(container, template);
   }
 };
 
@@ -820,6 +898,15 @@ if (inventoryForm) {
     return card;
   };
 
+  const addInventoryOtherItemCard = () => {
+    if (!inventoryOtherItemsList) {
+      return;
+    }
+
+    inventoryOtherItemsList.hidden = false;
+    inventoryOtherItemsList.append(createOtherItemCard());
+  };
+
   const applyInventoryDefaults = async () => {
     const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
     const catchmentArea = await resolveEngineeringCatchmentArea(householdId);
@@ -882,10 +969,46 @@ if (inventoryForm) {
 
   if (inventoryAddOtherItemButton && inventoryOtherItemsList) {
     inventoryAddOtherItemButton.addEventListener("click", () => {
-      inventoryOtherItemsList.hidden = false;
-      inventoryOtherItemsList.append(createOtherItemCard());
+      addInventoryOtherItemCard();
     });
   }
+
+  const applyInventorySubmission = async () => {
+    const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
+    if (!householdId) {
+      return;
+    }
+
+    const inventoryPayload = await getFormSubmissionFromBackend("inventory", householdId);
+    if (!inventoryPayload) {
+      return;
+    }
+
+    const otherItemsCount = inventoryPayload.formState?.meta?.otherItemsCount || 0;
+    while ((inventoryOtherItemsList?.querySelectorAll(".inventory-question-card").length || 0) < otherItemsCount) {
+      addInventoryOtherItemCard();
+    }
+
+    restoreFormState(inventoryForm, inventoryPayload.formState);
+
+    if (inventoryCatchmentAreaInput && inventoryPayload.catchmentArea) {
+      inventoryCatchmentAreaInput.value = inventoryPayload.catchmentArea;
+    }
+
+    if (inventoryRecommendedTankInput && inventoryPayload.recommendedTank) {
+      inventoryRecommendedTankInput.value = inventoryPayload.recommendedTank;
+    }
+
+    if (inventoryWaterTankSelect && inventoryPayload.selectedTankSize) {
+      inventoryWaterTankSelect.value = inventoryPayload.selectedTankSize;
+    }
+
+    if (inventoryPalletSpecInput) {
+      inventoryPalletSpecInput.value = inventoryPayload.palletSpec || getPalletSpecForTank(inventoryWaterTankSelect?.value || "");
+    }
+  };
+
+  void applyInventorySubmission();
 
   const collectInventorySubmissionPayload = () => {
     const otherItems = inventoryOtherItemsList
@@ -900,6 +1023,9 @@ if (inventoryForm) {
       : [];
 
     return {
+      formState: serializeFormState(inventoryForm, {
+        otherItemsCount: otherItems.length,
+      }),
       catchmentArea: inventoryCatchmentAreaInput?.value || "",
       recommendedTank: inventoryRecommendedTankInput?.value || "",
       selectedTankSize: inventoryWaterTankSelect?.value || "",
@@ -1011,10 +1137,14 @@ if (socioeconomicForm) {
       : [];
 
     const responses = readSeafResponses();
+    const formState = serializeFormState(socioeconomicForm, {
+      personCount: personList?.querySelectorAll(".repeatable-card").length || 1,
+    });
     responses[householdId] = {
       ...(responses[householdId] || {}),
       facilities: facilities.length > 0 ? facilities : facilityChecks,
       utilities: utilityChecks,
+      formState,
     };
     writeSeafResponses(responses);
     upsertHouseholdRecord(householdId, {
@@ -1114,6 +1244,24 @@ if (socioeconomicForm) {
       handleRemoveClick(event, facilityList);
     });
   }
+
+  const applySocioeconomicDefaults = async () => {
+    const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
+    if (!householdId) {
+      return;
+    }
+
+    const seafPayload = await getFormSubmissionFromBackend("seaf", householdId);
+    const formState = seafPayload?.formState || null;
+    if (!formState) {
+      return;
+    }
+
+    ensureRepeatableCount(personList, personTemplate, formState.meta?.personCount || 1, addRepeatableItem);
+    restoreFormState(socioeconomicForm, formState);
+  };
+
+  void applySocioeconomicDefaults();
 
   if (socioContinueButton) {
     socioContinueButton.addEventListener("click", () => {
@@ -1490,6 +1638,19 @@ if (engineeringForm) {
       syncCatchmentRow(row);
     });
 
+    const savedTankCounts = source.formState?.meta?.tankCounts || {};
+    tankCountInputs.forEach((input) => {
+      const tankType = input.dataset.tankCount;
+      const savedCount = Math.max(0, Number.parseInt(String(savedTankCounts[tankType] || "0"), 10) || 0);
+      input.value = savedCount > 0 ? String(savedCount) : "";
+      createTankRows(tankType, savedCount);
+      syncTankTotals(tankType);
+    });
+
+    if (source.formState) {
+      restoreFormState(engineeringForm, source.formState);
+    }
+
     if (housingAreaInput && !housingAreaInput.value && source.housingArea) {
       housingAreaInput.value = source.housingArea;
     }
@@ -1503,6 +1664,13 @@ if (engineeringForm) {
     syncWaterNeedCalculations();
     syncEngineerOptions();
     setSelectValue(engineerSelect, source.engineerName || householdRecord?.engineerName || "");
+    toggleCheckboxes.forEach((checkbox) => {
+      syncToggleField(checkbox);
+    });
+    Array.from(engineeringForm.querySelectorAll("[data-generated-tank-row]")).forEach((row) => {
+      const tankType = row.dataset.generatedTankRow;
+      syncTankRow(row, tankType);
+    });
 
     if (housingAreaInput && !housingAreaInput.value && source.housingArea) {
       housingAreaInput.value = source.housingArea;
@@ -1585,6 +1753,12 @@ if (engineeringForm) {
         .filter((row) => row.width || row.length || row.area);
       const engineeringPayload = {
         engineerName,
+        formState: serializeFormState(engineeringForm, {
+          tankCounts: tankCountInputs.reduce((accumulator, input) => {
+            accumulator[input.dataset.tankCount] = input.value || "0";
+            return accumulator;
+          }, {}),
+        }),
         housingWidth: housingWidthInput?.value.trim() || "",
         housingDepth: housingDepthInput?.value.trim() || "",
         catchmentRows: catchmentRowPayload,

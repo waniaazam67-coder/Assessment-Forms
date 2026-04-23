@@ -7,7 +7,8 @@ const eligibleHouseholdsStorageKey = "shehersaaz-eligible-households";
 const submittedFormsStorageKey = "shehersaaz-submitted-forms";
 const seafResponsesStorageKey = "shehersaaz-seaf-responses";
 const householdRecordsStorageKey = "shehersaaz-household-records";
-const backendBaseUrl = window.location.protocol === "file:" ? "http://127.0.0.1:3000" : window.location.origin;
+const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
+const backendBaseUrl = window.location.protocol === "file:" || isLocalFrontendDev ? "http://127.0.0.1:4000" : window.location.origin;
 
 function readJson(storage, key, fallback) {
   try {

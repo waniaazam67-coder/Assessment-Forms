@@ -263,7 +263,7 @@ const server = http.createServer(async (req, res) => {
 initializeDatabase()
   .then(() => {
     server.listen(port, host, () => {
-      console.log(`Shehersaaz backend running at http://${host}:${port}`);
+      console.log(`Shehersaaz backend listening on port ${port}`);
     });
   })
   .catch((error) => {

@@ -2,3 +2,6 @@ backend/.env
 backend/node_modules
 node_modules
 .env
+*.log
+*-export-test.csv
+*-export-test.json
