@@ -25,17 +25,80 @@ function readJson(storage, key, fallback) {
 }
 
 async function apiJsonRequest(path) {
+  const requestOptions = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+  const headers = {
+    Accept: "application/json",
+    ...(requestOptions.headers || {}),
+  };
+
   const response = await fetch(`${backendBaseUrl}${path}`, {
-    headers: {
-      Accept: "application/json",
-    },
+    ...requestOptions,
+    headers,
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`);
+    let message = `Request failed with status ${response.status}`;
+
+    try {
+      const payload = await response.json();
+      if (payload?.error) {
+        message = payload.error;
+      }
+    } catch (error) {
+      // Ignore JSON parse failures and keep the default message.
+    }
+
+    const requestError = new Error(message);
+    requestError.status = response.status;
+    throw requestError;
   }
 
   return response.json();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function normalizeStatus(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function formatDate(value, options = {}) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    ...options,
+  }).format(date);
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "Not available";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 function sortRecords(records) {
@@ -74,6 +137,7 @@ function buildRecordsFromSnapshot(snapshot = {}) {
       engineerName: record.engineerName || "",
       engineerEmploymentCode: record.engineerEmploymentCode || "",
       eligibilityStatus: record.eligibilityStatus || record.status || "",
+      updatedAt: record.updatedAt || submission.updatedAt || null,
       status: {
         household: submission.household || "Pending",
         seaf: submission.seaf || (record.stageStatus?.seaf ? "Submitted" : "Pending"),
@@ -99,6 +163,7 @@ function buildRecordsFromSnapshot(snapshot = {}) {
       householdId,
       headName: existing.headName || record.headName || "-",
       eligibilityStatus: existing.eligibilityStatus || "",
+      updatedAt: existing.updatedAt || record.updatedAt || null,
       status: {
         household: record.household || existing.status?.household || "Pending",
         seaf: record.seaf || existing.status?.seaf || "Pending",
@@ -128,6 +193,7 @@ function buildRecordsFromSnapshot(snapshot = {}) {
         engineerName: "",
         engineerEmploymentCode: "",
         eligibilityStatus: "",
+        updatedAt: seafResponses[householdId]?.submittedAt || null,
         status: {
           household: "Pending",
           seaf: "Submitted",
@@ -161,6 +227,7 @@ function buildRecordsFromSnapshot(snapshot = {}) {
       engineerName: "",
       engineerEmploymentCode: "",
       eligibilityStatus: "",
+      updatedAt: null,
       status: {
         household: "Pending",
         seaf: "Pending",
@@ -211,6 +278,7 @@ function buildRecordsFromLocalStorage() {
       engineerName: record.engineerName || "",
       engineerEmploymentCode: record.engineerEmploymentCode || "",
       eligibilityStatus: record.status || record.eligibilityStatus || (eligibleIds.has(record.householdId) ? "passed" : "failed"),
+      updatedAt: record.updatedAt || submission.updatedAt || null,
       status: {
         household: submission.household || "Pending",
         seaf: submission.seaf || "Pending",
@@ -250,6 +318,7 @@ function buildRecordsFromLocalStorage() {
       householdId,
       headName: existing.headName || record.headName || "-",
       engineerName: existing.engineerName || record.engineerName || "",
+      updatedAt: existing.updatedAt || record.updatedAt || null,
       status: {
         household: record.household || existing.status?.household || "Pending",
         seaf: record.seaf || existing.status?.seaf || "Pending",
@@ -279,6 +348,7 @@ function buildRecordsFromLocalStorage() {
         engineerName: "",
         engineerEmploymentCode: "",
         eligibilityStatus: eligibleIds.has(householdId) ? "passed" : "failed",
+        updatedAt: seafResponses[householdId]?.submittedAt || null,
         status: {
           household: "Pending",
           seaf: "Submitted",
@@ -312,6 +382,7 @@ function buildRecordsFromLocalStorage() {
       engineerName: "",
       engineerEmploymentCode: "",
       eligibilityStatus: eligibleIds.has(householdId) ? "passed" : "failed",
+      updatedAt: submitted[householdId]?.updatedAt || null,
       status: {
         household: submitted[householdId]?.household || "Pending",
         seaf: submitted[householdId]?.seaf || "Pending",
@@ -331,8 +402,8 @@ function buildRecordsFromLocalStorage() {
 
 function getOverviewStats(records) {
   const totalAssessed = records.length;
-  const eligibleCount = records.filter((record) => String(record?.eligibilityStatus || "").toLowerCase() === "passed").length;
-  const notEligibleCount = records.filter((record) => String(record?.eligibilityStatus || "").toLowerCase() === "failed").length;
+  const eligibleCount = records.filter((record) => normalizeStatus(record?.eligibilityStatus) === "passed").length;
+  const notEligibleCount = records.filter((record) => normalizeStatus(record?.eligibilityStatus) === "failed").length;
   const seafDone = records.filter((record) => record?.stageStatus?.seaf).length;
   const engineeringDone = records.filter((record) => record?.stageStatus?.engineering).length;
   const readyCount = records.filter((record) => record?.stageStatus?.seaf && record?.stageStatus?.engineering && record?.stageStatus?.inventory).length;
@@ -437,6 +508,20 @@ function metricIcon(kind) {
   return icons[kind] || icons.households;
 }
 
+function getChipTone(value) {
+  const normalized = normalizeStatus(value);
+
+  if (["submitted", "passed", "connected", "healthy", "complete"].includes(normalized)) {
+    return "done";
+  }
+
+  if (["failed", "disconnected", "offline", "error"].includes(normalized)) {
+    return "failed";
+  }
+
+  return "pending";
+}
+
 function renderMetrics(container, records) {
   if (!container) {
     return;
@@ -462,19 +547,18 @@ function renderDataTable(container, records, filters = {}) {
     return;
   }
 
-  const normalize = (value) => String(value || "").trim().toLowerCase();
-  const locationTerm = normalize(filters.location);
-  const statusTerm = normalize(filters.status);
-  const nameTerm = normalize(filters.name);
-  const stageTerm = normalize(filters.stage);
-  const startDate = normalize(filters.startDate);
-  const endDate = normalize(filters.endDate);
+  const locationTerm = normalizeStatus(filters.location);
+  const statusTerm = normalizeStatus(filters.status);
+  const nameTerm = normalizeStatus(filters.name);
+  const stageTerm = normalizeStatus(filters.stage);
+  const startDate = normalizeStatus(filters.startDate);
+  const endDate = normalizeStatus(filters.endDate);
 
   const filtered = records.filter((record) => {
     const location = `${record.city || ""} ${record.ucnc || ""} ${record.address || ""}`.toLowerCase();
     const names = `${record.cmoName || ""} ${record.engineerName || ""}`.toLowerCase();
-    const recordStatus = normalize(record.eligibilityStatus);
-    const recordDate = normalize(record.surveyDate);
+    const recordStatus = normalizeStatus(record.eligibilityStatus);
+    const recordDate = normalizeStatus(record.surveyDate);
     const stageStatus = record.stageStatus || {};
 
     const matchesLocation = !locationTerm || location.includes(locationTerm);
@@ -503,26 +587,217 @@ function renderDataTable(container, records, filters = {}) {
   filtered.forEach((record) => {
     const row = document.createElement("tr");
     const location = [record.city, record.ucnc, record.address].filter(Boolean).join(", ") || "-";
-    const status = normalize(record.eligibilityStatus) === "passed" ? "Passed" : "Failed";
-    const statusTone = status === "Passed" ? "green" : "failed";
+    const isPassed = normalizeStatus(record.eligibilityStatus) === "passed";
+    const statusLabel = isPassed ? "Passed" : "Failed";
+    const staffLabel = record.cmoName || record.engineerName ? [record.cmoName, record.engineerName].filter(Boolean).join(" / ") : "No staff captured";
 
     row.innerHTML = `
-      <td>${record.householdId || "-"}</td>
+      <td>${escapeHtml(record.householdId || "-")}</td>
       <td>
-        <strong class="admin-table__primary">${location}</strong>
-        <small class="admin-table__meta">${record.cmoName || record.engineerName ? [record.cmoName, record.engineerName].filter(Boolean).join(" / ") : "No staff captured"}</small>
+        <strong class="admin-table__primary">${escapeHtml(location)}</strong>
+        <small class="admin-table__meta">${escapeHtml(staffLabel)}</small>
       </td>
-      <td>${record.catchmentArea || "-"}</td>
-      <td>${record.tankSpace || "-"}</td>
-      <td><span class="admin-chip admin-chip--${statusTone}">${status}</span></td>
+      <td>${escapeHtml(record.catchmentArea || "-")}</td>
+      <td>${escapeHtml(record.tankSpace || "-")}</td>
+      <td><span class="admin-chip admin-chip--${isPassed ? "green" : "failed"}">${statusLabel}</span></td>
     `;
     container.append(row);
   });
 }
 
+function renderHouseholdSummary(container, records) {
+  if (!container) {
+    return;
+  }
+
+  const completed = records.filter((record) => countSubmitted(record).complete).length;
+  const pending = records.filter((record) => !countSubmitted(record).complete).length;
+  const withCatchment = records.filter((record) => String(record.catchmentArea || "").trim()).length;
+  const withTankSpace = records.filter((record) => String(record.tankSpace || "").trim()).length;
+
+  const items = [
+    { label: "Households in database", value: records.length },
+    { label: "All three forms submitted", value: completed },
+    { label: "Need follow-up", value: pending },
+    { label: "Catchment captured", value: withCatchment },
+    { label: "Tank space captured", value: withTankSpace },
+  ];
+
+  container.innerHTML = items
+    .map(
+      (item) => `
+        <article class="admin-summary-card">
+          <strong>${escapeHtml(item.value)}</strong>
+          <span>${escapeHtml(item.label)}</span>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderHouseholdList(container, records, searchTerm = "") {
+  if (!container) {
+    return;
+  }
+
+  const normalizedSearch = normalizeStatus(searchTerm);
+  const filtered = records.filter((record) => {
+    if (!normalizedSearch) {
+      return true;
+    }
+
+    const haystack = [
+      record.householdId,
+      record.headName,
+      record.city,
+      record.ucnc,
+      record.address,
+      record.cmoName,
+      record.engineerName,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return haystack.includes(normalizedSearch);
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<div class="admin-placeholder">No household records match that search.</div>`;
+    return;
+  }
+
+  container.innerHTML = filtered
+    .map((record) => {
+      const summary = countSubmitted(record);
+      const location = [record.city, record.ucnc, record.address].filter(Boolean).join(", ") || "Location not captured yet";
+      const eligibility = normalizeStatus(record.eligibilityStatus) === "passed" ? "Passed" : normalizeStatus(record.eligibilityStatus) === "failed" ? "Failed" : "Pending";
+      const updatedAt = record.updatedAt ? formatDateTime(record.updatedAt) : "No recent backend update";
+
+      return `
+        <article class="admin-household-card">
+          <div class="admin-household-card__header">
+            <div>
+              <h4>${escapeHtml(record.headName || "-")}</h4>
+              <p>${escapeHtml(record.householdId || "-")}</p>
+            </div>
+            <span class="admin-chip admin-chip--${getChipTone(eligibility)}">${escapeHtml(eligibility)}</span>
+          </div>
+          <p class="admin-household-card__location">${escapeHtml(location)}</p>
+          <div class="admin-household-card__meta">
+            <span>Survey date: ${escapeHtml(formatDate(record.surveyDate))}</span>
+            <span>Catchment: ${escapeHtml(record.catchmentArea || "-")}</span>
+            <span>Tank space: ${escapeHtml(record.tankSpace || "-")}</span>
+            <span>Updated: ${escapeHtml(updatedAt)}</span>
+          </div>
+          <div class="admin-household-card__staff">
+            <span>CMO: ${escapeHtml(record.cmoName || "Not captured")}</span>
+            <span>Engineer: ${escapeHtml(record.engineerName || "Not captured")}</span>
+          </div>
+          <div class="admin-household-card__stages">
+            <span class="admin-chip admin-chip--${getChipTone(record.status?.household)}">Household: ${escapeHtml(record.status?.household || "Pending")}</span>
+            <span class="admin-chip admin-chip--${getChipTone(summary.seaf ? "Submitted" : "Pending")}">SEAF: ${summary.seaf ? "Submitted" : "Pending"}</span>
+            <span class="admin-chip admin-chip--${getChipTone(summary.engineering ? "Submitted" : "Pending")}">Engineering: ${summary.engineering ? "Submitted" : "Pending"}</span>
+            <span class="admin-chip admin-chip--${getChipTone(summary.inventory ? "Submitted" : "Pending")}">Inventory: ${summary.inventory ? "Submitted" : "Pending"}</span>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function buildRecentActivity(snapshot = {}) {
+  const formSubmissions = snapshot.formSubmissions && typeof snapshot.formSubmissions === "object" ? snapshot.formSubmissions : {};
+  const items = [];
+
+  Object.entries(formSubmissions).forEach(([householdId, forms]) => {
+    Object.entries(forms || {}).forEach(([formKey, entry]) => {
+      items.push({
+        householdId,
+        formKey,
+        submittedAt: entry?.submittedAt || null,
+      });
+    });
+  });
+
+  return items
+    .sort((left, right) => String(right.submittedAt || "").localeCompare(String(left.submittedAt || "")))
+    .slice(0, 10);
+}
+
+function renderSystemStatus(container, records, snapshot, health, usingBackend) {
+  if (!container) {
+    return;
+  }
+
+  const recentActivityCount = buildRecentActivity(snapshot).length;
+  const items = [
+    {
+      label: "Backend status",
+      value: usingBackend ? "Connected" : "Disconnected",
+    },
+    {
+      label: "Database health",
+      value: health?.ok ? "Healthy" : usingBackend ? "Unavailable" : "Offline",
+    },
+    {
+      label: "Last snapshot sync",
+      value: usingBackend ? formatDateTime(snapshot?.updatedAt) : "Not available",
+    },
+    {
+      label: "Households loaded",
+      value: String(records.length),
+    },
+    {
+      label: "Generated household IDs",
+      value: String(Array.isArray(snapshot?.generatedIds) ? snapshot.generatedIds.length : 0),
+    },
+    {
+      label: "Recent submitted forms shown",
+      value: String(recentActivityCount),
+    },
+  ];
+
+  container.innerHTML = items
+    .map(
+      (item) => `
+        <article class="admin-role-item">
+          <strong>${escapeHtml(item.label)}</strong>
+          <span class="admin-chip admin-chip--${getChipTone(item.value)}">${escapeHtml(item.value)}</span>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderRecentActivity(container, snapshot = {}) {
+  if (!container) {
+    return;
+  }
+
+  const activity = buildRecentActivity(snapshot);
+  if (activity.length === 0) {
+    container.innerHTML = `<div class="admin-placeholder">No form submissions have reached the database yet.</div>`;
+    return;
+  }
+
+  container.innerHTML = activity
+    .map(
+      (item) => `
+        <article class="admin-activity-item">
+          <strong>${escapeHtml(item.householdId)}</strong>
+          <small>${escapeHtml(item.formKey.toUpperCase())} form submission</small>
+          <span>${escapeHtml(formatDateTime(item.submittedAt))}</span>
+        </article>
+      `
+    )
+    .join("");
+}
+
 function bootLoginPage() {
   const form = document.querySelector("[data-admin-login-form]");
   const feedback = document.querySelector("[data-admin-feedback]");
+  const submitButton = form?.querySelector('button[type="submit"]');
 
   const existing = sessionStorage.getItem(AUTH_KEY);
   if (existing) {
@@ -530,26 +805,53 @@ function bootLoginPage() {
     return;
   }
 
-  form?.addEventListener("submit", (event) => {
+  form?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(form);
     const email = String(formData.get("email") || "").trim().toLowerCase();
     const password = String(formData.get("password") || "").trim();
 
-    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+    if (feedback) {
+      feedback.textContent = "";
+    }
+
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = "Signing in...";
+    }
+
+    try {
+      const result = await apiJsonRequest("/api/admin/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
       sessionStorage.setItem(
         AUTH_KEY,
         JSON.stringify({
-          email: ADMIN_EMAIL,
-          name: "Admin",
+          email: result?.session?.email || email || ADMIN_EMAIL,
+          name: result?.session?.name || "Admin",
         })
       );
       window.location.href = "dashboard.html";
-      return;
-    }
-
-    if (feedback) {
-      feedback.textContent = "Invalid admin credentials.";
+    } catch (error) {
+      if (feedback) {
+        feedback.textContent =
+          error?.status === 401
+            ? "Invalid admin credentials."
+            : "Unable to reach the backend. Start the backend server and try again.";
+      }
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = "Login";
+      }
     }
   });
 }
@@ -580,6 +882,14 @@ async function bootDashboardPage() {
   const refreshButton = document.querySelector("[data-admin-refresh]");
   const exportCsvButton = document.querySelector("[data-admin-export-csv]");
   const exportJsonButton = document.querySelector("[data-admin-export-json]");
+  const exportSeafButton = document.querySelector("[data-admin-export-seaf]");
+  const exportEngineeringButton = document.querySelector("[data-admin-export-engineering]");
+  const exportInventoryButton = document.querySelector("[data-admin-export-inventory]");
+  const householdSummary = document.querySelector("[data-admin-household-summary]");
+  const householdList = document.querySelector("[data-admin-household-list]");
+  const householdSearch = document.querySelector("[data-admin-household-search]");
+  const systemStatus = document.querySelector("[data-admin-system-status]");
+  const recentActivity = document.querySelector("[data-admin-activity-list]");
   const filters = {
     location: document.querySelector("[data-admin-filter-location]"),
     status: document.querySelector("[data-admin-filter-status]"),
@@ -591,6 +901,8 @@ async function bootDashboardPage() {
   const logout = document.querySelector("[data-admin-logout]");
 
   let records = [];
+  let snapshot = {};
+  let health = null;
   let usingBackend = false;
 
   if (name) {
@@ -626,34 +938,58 @@ async function bootDashboardPage() {
     });
   };
 
+  const renderHouseholds = () => {
+    renderHouseholdSummary(householdSummary, records);
+    renderHouseholdList(householdList, records, householdSearch?.value || "");
+  };
+
+  const renderAccess = () => {
+    renderSystemStatus(systemStatus, records, snapshot, health, usingBackend);
+    renderRecentActivity(recentActivity, snapshot);
+  };
+
   const loadRecords = async () => {
     if (dataSource) {
       dataSource.textContent = "Loading latest records...";
     }
 
     try {
-      const snapshot = await apiJsonRequest("/api/db");
-      records = buildRecordsFromSnapshot(snapshot);
+      const [nextHealth, nextSnapshot] = await Promise.all([
+        apiJsonRequest("/api/health"),
+        apiJsonRequest("/api/db"),
+      ]);
+
+      health = nextHealth;
+      snapshot = nextSnapshot;
+      records = buildRecordsFromSnapshot(nextSnapshot);
       usingBackend = true;
+
       if (dataSource) {
-        dataSource.textContent = "Connected to Node.js + MySQL. Downloads use live database data.";
+        dataSource.textContent = "Connected to Node.js + MySQL. All dashboard sections are using live database data.";
       }
     } catch (error) {
+      health = null;
+      snapshot = {};
       records = buildRecordsFromLocalStorage();
       usingBackend = false;
+
       if (dataSource) {
-        dataSource.textContent = "Backend is unavailable. Showing browser-stored data only.";
+        dataSource.textContent = "Backend is unavailable. Dashboard is showing browser-stored fallback data only.";
       }
     }
 
     renderMetrics(metrics, records);
     renderTable();
+    renderHouseholds();
+    renderAccess();
   };
 
   Object.values(filters).forEach((control) => {
     control?.addEventListener("input", renderTable);
     control?.addEventListener("change", renderTable);
   });
+
+  householdSearch?.addEventListener("input", renderHouseholds);
 
   refreshButton?.addEventListener("click", () => {
     void loadRecords();
@@ -675,6 +1011,33 @@ async function bootDashboardPage() {
     }
 
     triggerExport("snapshot", "json");
+  });
+
+  exportSeafButton?.addEventListener("click", () => {
+    if (!usingBackend) {
+      window.alert("Start the Node.js backend first so the SEAF CSV can be downloaded from MySQL.");
+      return;
+    }
+
+    triggerExport("seaf", "csv");
+  });
+
+  exportEngineeringButton?.addEventListener("click", () => {
+    if (!usingBackend) {
+      window.alert("Start the Node.js backend first so the Engineering CSV can be downloaded from MySQL.");
+      return;
+    }
+
+    triggerExport("engineering", "csv");
+  });
+
+  exportInventoryButton?.addEventListener("click", () => {
+    if (!usingBackend) {
+      window.alert("Start the Node.js backend first so the Inventory CSV can be downloaded from MySQL.");
+      return;
+    }
+
+    triggerExport("inventory", "csv");
   });
 
   navLinks.forEach((link) => {

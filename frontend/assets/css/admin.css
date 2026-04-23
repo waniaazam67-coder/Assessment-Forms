@@ -423,10 +423,38 @@ input {
   gap: 10px;
 }
 
+.admin-actions--export-row {
+  margin-top: -4px;
+}
+
 .admin-card__subtitle {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+.admin-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.admin-summary-card {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 18px;
+  background: #f8fbfb;
+  border: 1px solid rgba(112, 140, 145, 0.14);
+}
+
+.admin-summary-card strong {
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.admin-summary-card span {
+  color: var(--muted);
 }
 
 .admin-placeholder {
@@ -435,6 +463,66 @@ input {
   border: 1px dashed rgba(112, 140, 145, 0.24);
   background: #f8fbfb;
   color: var(--muted);
+}
+
+.admin-household-search {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-household-search span {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #6e8290;
+}
+
+.admin-household-list {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-household-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(112, 140, 145, 0.14);
+  background: #f8fbfb;
+}
+
+.admin-household-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.admin-household-card__header h4,
+.admin-household-card__header p,
+.admin-household-card__location {
+  margin: 0;
+}
+
+.admin-household-card__header p,
+.admin-household-card__location,
+.admin-household-card__meta span,
+.admin-household-card__staff span {
+  color: var(--muted);
+}
+
+.admin-household-card__meta,
+.admin-household-card__staff,
+.admin-household-card__stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-household-card__meta span,
+.admin-household-card__staff span {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(47, 141, 123, 0.08);
 }
 
 .admin-filters {

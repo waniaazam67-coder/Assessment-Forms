@@ -20,6 +20,11 @@ module.exports = {
   legacyDbFile: path.join(backendDir, "data", "db.json"),
   host: process.env.HOST || "127.0.0.1",
   port: toPort(process.env.PORT, 4000),
+  admin: {
+    email: String(process.env.ADMIN_EMAIL || "admin@shehersaaz.com").trim().toLowerCase(),
+    password: String(process.env.ADMIN_PASSWORD || "Admin@2025"),
+    name: String(process.env.ADMIN_NAME || "Admin").trim() || "Admin",
+  },
   db: {
     host: process.env.DB_HOST || "localhost",
     port: toPort(process.env.DB_PORT, 3306),

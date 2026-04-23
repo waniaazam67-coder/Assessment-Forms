@@ -37,6 +37,9 @@ You can also inspect a combined snapshot through:
 
 - `GET /api/db`
 - `GET /api/export?dataset=households&format=csv`
+- `GET /api/export?dataset=seaf&format=csv`
+- `GET /api/export?dataset=engineering&format=csv`
+- `GET /api/export?dataset=inventory&format=csv`
 - `GET /api/export?dataset=snapshot&format=json`
 
 Supported export datasets:
@@ -45,6 +48,9 @@ Supported export datasets:
 - `submitted-forms`
 - `form-submissions`
 - `seaf-responses`
+- `seaf`
+- `engineering`
+- `inventory`
 - `snapshot` (JSON only)
 
 ## Local setup

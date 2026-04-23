@@ -28,12 +28,12 @@
 
       <div class="admin-auth__notes">
         <div class="admin-note">
-          <strong>Connected to forms</strong>
-          <span>Reads the assessment status data from the browser storage used by the forms.</span>
+          <strong>Connected to backend</strong>
+          <span>Reads admin access and dashboard data through the Node.js and MySQL backend.</span>
         </div>
         <div class="admin-note">
           <strong>Admin only</strong>
-          <span>Access is protected by a dedicated admin login.</span>
+          <span>Access is protected by a dedicated admin login checked by the backend.</span>
         </div>
       </div>
     </section>
@@ -42,7 +42,7 @@
       <div>
         <p class="admin-kicker">Admin Login</p>
         <h2>Sign in to continue</h2>
-        <p class="admin-muted">Use the admin credentials to open the dashboard.</p>
+        <p class="admin-muted">Use the backend-configured admin credentials to open the dashboard.</p>
       </div>
 
       <form class="admin-form" data-admin-login-form>
@@ -61,9 +61,8 @@
       </form>
 
       <div class="admin-credentials">
-        <p><strong>Demo access for now</strong></p>
-        <p>Email: <code>admin@shehersaaz.com</code></p>
-        <p>Password: <code>Admin@2025</code></p>
+        <p><strong>Backend-configured access</strong></p>
+        <p>Set <code>ADMIN_EMAIL</code>, <code>ADMIN_PASSWORD</code>, and <code>ADMIN_NAME</code> in <code>backend/.env</code>.</p>
       </div>
     </section>
   </main>

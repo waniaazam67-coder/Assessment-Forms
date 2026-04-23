@@ -55,11 +55,16 @@
           <div class="admin-card__header">
             <div>
               <h3>Households</h3>
-              <p class="admin-card__subtitle">Household records and stage summaries will live here.</p>
+              <p class="admin-card__subtitle">Browse live household records, assessment progress, and saved engineering details from MySQL.</p>
             </div>
           </div>
-          <div class="admin-placeholder">
-            This page is reserved for household-level management views.
+          <label class="admin-household-search">
+            <span>Search households</span>
+            <input type="search" class="admin-search" placeholder="Household ID, head name, city, UC/NC, staff name" data-admin-household-search>
+          </label>
+          <div class="admin-summary-grid" data-admin-household-summary></div>
+          <div class="admin-household-list" data-admin-household-list>
+            <div class="admin-placeholder">Loading household records from the backend...</div>
           </div>
         </article>
       </section>
@@ -76,6 +81,11 @@
               <button type="button" class="admin-button admin-button--ghost" data-admin-export-csv>Download CSV</button>
               <button type="button" class="admin-button" data-admin-export-json>Download JSON</button>
             </div>
+          </div>
+          <div class="admin-actions admin-actions--export-row">
+            <button type="button" class="admin-button admin-button--ghost" data-admin-export-seaf>Download SEAF CSV</button>
+            <button type="button" class="admin-button admin-button--ghost" data-admin-export-engineering>Download Engineering CSV</button>
+            <button type="button" class="admin-button admin-button--ghost" data-admin-export-inventory>Download Inventory CSV</button>
           </div>
           <div class="admin-filters" data-admin-filters>
             <label class="admin-filter">
@@ -130,17 +140,31 @@
       </section>
 
       <section class="admin-page" id="access" data-admin-page="access" hidden>
-        <article class="admin-card">
-          <div class="admin-card__header">
-            <div>
-              <h3>Access</h3>
-              <p class="admin-card__subtitle">Role and access controls will be expanded here later.</p>
+        <div class="admin-grid">
+          <article class="admin-card">
+            <div class="admin-card__header">
+              <div>
+                <h3>System status</h3>
+                <p class="admin-card__subtitle">Current backend, database, and sync information for the admin dashboard.</p>
+              </div>
             </div>
-          </div>
-          <div class="admin-placeholder">
-            Access management is not connected yet.
-          </div>
-        </article>
+            <div class="admin-role-list" data-admin-system-status>
+              <div class="admin-placeholder">Checking backend and database status...</div>
+            </div>
+          </article>
+
+          <article class="admin-card">
+            <div class="admin-card__header">
+              <div>
+                <h3>Recent form activity</h3>
+                <p class="admin-card__subtitle">Latest form submissions detected from the database snapshot.</p>
+              </div>
+            </div>
+            <div class="admin-activity" data-admin-activity-list>
+              <div class="admin-placeholder">Loading recent submissions...</div>
+            </div>
+          </article>
+        </div>
       </section>
     </section>
   </main>

@@ -1,11 +1,20 @@
 const http = require("node:http");
 const { URL } = require("node:url");
-const { frontendDir, host, port } = require("./config");
+const { frontendDir, host, port, admin } = require("./config");
 const { healthCheck, initializeDatabase, listHouseholds, getHouseholdById, getFormSubmission, getSnapshot, upsertHousehold, submitForm } = require("./db");
 const { sendJson, sendText, sendDownload, readRequestBody, serveStatic } = require("./http");
 
 const allowedForms = new Set(["household", "seaf", "engineering", "inventory"]);
-const exportableDatasets = new Set(["households", "submitted-forms", "form-submissions", "seaf-responses", "snapshot"]);
+const exportableDatasets = new Set([
+  "households",
+  "submitted-forms",
+  "form-submissions",
+  "seaf-responses",
+  "seaf",
+  "engineering",
+  "inventory",
+  "snapshot",
+]);
 
 const escapeCsvValue = (value) => {
   const normalized = value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
@@ -57,6 +66,48 @@ const toFormSubmissionRows = (formSubmissions = {}) => {
   return rows;
 };
 
+const flattenRow = (value, prefix = "", output = {}) => {
+  if (Array.isArray(value)) {
+    output[prefix] = JSON.stringify(value);
+    return output;
+  }
+
+  if (value && typeof value === "object") {
+    Object.entries(value).forEach(([key, nestedValue]) => {
+      const nextPrefix = prefix ? `${prefix}.${key}` : key;
+      flattenRow(nestedValue, nextPrefix, output);
+    });
+    return output;
+  }
+
+  output[prefix] = value ?? "";
+  return output;
+};
+
+const toSingleFormRows = (formSubmissions = {}, formKey) => {
+  const rows = [];
+
+  Object.entries(formSubmissions).forEach(([householdId, forms]) => {
+    const entry = forms?.[formKey];
+    if (!entry) {
+      return;
+    }
+
+    rows.push({
+      householdId,
+      formKey,
+      submittedAt: entry.submittedAt || "",
+      ...flattenRow(
+        Object.fromEntries(
+          Object.entries(entry.payload || {}).filter(([key]) => key !== "formState")
+        )
+      ),
+    });
+  });
+
+  return rows;
+};
+
 const toSeafResponseRows = (seafResponses = {}) =>
   Object.entries(seafResponses).map(([householdId, entry]) => ({
     householdId,
@@ -74,6 +125,12 @@ const getExportPayload = (snapshot, dataset) => {
       return toFormSubmissionRows(snapshot.formSubmissions);
     case "seaf-responses":
       return toSeafResponseRows(snapshot.seafResponses);
+    case "seaf":
+      return toSingleFormRows(snapshot.formSubmissions, "seaf");
+    case "engineering":
+      return toSingleFormRows(snapshot.formSubmissions, "engineering");
+    case "inventory":
+      return toSingleFormRows(snapshot.formSubmissions, "inventory");
     case "snapshot":
       return snapshot;
     default:
@@ -92,6 +149,31 @@ const handleApi = async (req, res, pathname) => {
     sendJson(res, ok ? 200 : 503, {
       ok,
       timestamp: new Date().toISOString(),
+    });
+    return true;
+  }
+
+  if (req.method === "POST" && pathname === "/api/admin/login") {
+    const body = await readRequestBody(req);
+    const email = String(body?.email || "").trim().toLowerCase();
+    const password = String(body?.password || "");
+
+    if (!email || !password) {
+      sendJson(res, 400, { error: "Email and password are required." });
+      return true;
+    }
+
+    if (email !== admin.email || password !== admin.password) {
+      sendJson(res, 401, { error: "Invalid admin credentials." });
+      return true;
+    }
+
+    sendJson(res, 200, {
+      ok: true,
+      session: {
+        email: admin.email,
+        name: admin.name,
+      },
     });
     return true;
   }
