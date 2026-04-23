@@ -58,3 +58,24 @@ CREATE TABLE IF NOT EXISTS seaf_responses (
   submitted_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   CONSTRAINT seaf_responses_household_fk FOREIGN KEY (household_id) REFERENCES households (household_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS seaf_submissions (
+  household_id VARCHAR(64) NOT NULL PRIMARY KEY,
+  payload_json JSON NULL,
+  submitted_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  CONSTRAINT seaf_submissions_household_fk FOREIGN KEY (household_id) REFERENCES households (household_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS engineering_submissions (
+  household_id VARCHAR(64) NOT NULL PRIMARY KEY,
+  payload_json JSON NULL,
+  submitted_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  CONSTRAINT engineering_submissions_household_fk FOREIGN KEY (household_id) REFERENCES households (household_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS inventory_submissions (
+  household_id VARCHAR(64) NOT NULL PRIMARY KEY,
+  payload_json JSON NULL,
+  submitted_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  CONSTRAINT inventory_submissions_household_fk FOREIGN KEY (household_id) REFERENCES households (household_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
