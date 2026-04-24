@@ -1,0 +1,8 @@
+household_id,created_at,updated_at,cnic,respondent_cnic,head_cnic,survey_date,household_location,city,ucnc,interview_address,enumerator_name,catchment_area,tank_space,eligibility_status,respondent_is_household_head,household_head_name,relationship_to_head,respondent_name,respondent_phone_number,respondent_gender,respondent_age
+RWHU-WFT-LCU,2026-04-23 20:35:31.757,2026-04-23 20:36:19.925,,,,2026-04-23,,Rawalpindi,UC 1,111,Sakina Bashir,Yes,Yes,passed,,,,,,,
+RWHU-VJL-EMA,2026-04-23 20:29:43.108,2026-04-23 20:36:19.912,12345-6765432-2,12345-6765432-2,,2026-04-23,,Rawalpindi,UC 2,abc,Mehreen Bibi,Yes,Yes,passed,Yes,Wania Azam,,Wania Azam,03073089760,Woman,23
+RWHU-UQN-DZV,2026-04-23 20:29:43.185,2026-04-23 20:36:19.805,11111-1111111-1,11111-1111111-1,,2026-04-23,"1,2",Rawalpindi,UC 1,22,Sakina Bashir,Yes,Yes,passed,Yes,zara,,zara,11111111111,Man,23
+RWHU-TEST-DB-001,2026-04-23 20:26:26.347,2026-04-23 20:36:19.793,12345-1234567-1,12345-1234567-1,,2026-04-23,test location,Rawalpindi,UC 1,Test address,Tester,Yes,Yes,passed,Yes,Test Head,,Test Head,03001234567,Man,30
+RWHU-NLD-ZRN,2026-04-23 20:29:42.950,2026-04-23 20:36:19.779,22222-2222222-2,22222-2222222-2,,2026-04-23,zd,Rawalpindi,UC 1,ss,Sakina Bashir,Yes,Yes,passed,Yes,ssss,,ssss,33222222222,Woman,22
+RWHU-KTH-KNI,2026-04-23 20:29:41.706,2026-04-23 20:36:19.764,37406-5236437-7,37406-5236437-7,,2026-04-23,"1,2",Rawalpindi,UC 1,"House#26-G-167,Gudwal,Wah Cantt",Sakina Bashir,Yes,Yes,passed,Yes,umer,,umer,03185134401,Man,23
+RWHU-ALK-BRA,2026-04-23 20:30:02.504,2026-04-23 20:36:18.415,11111-1111111-1,11111-1111111-1,,2026-04-23,"1,2",Rawalpindi,UC 1,"House#26-G-167,Gudwal,Wah Cantt",Sakina Bashir,Yes,Yes,passed,Yes,waqas,,waqas,03185134401,Man,22

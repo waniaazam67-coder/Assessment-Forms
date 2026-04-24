@@ -17,6 +17,30 @@ const tableNames = {
   status: "assessment_status",
 };
 
+const tablesWithRawPayload = new Set();
+
+const simpleViewNamesByTable = {
+  household_info: "household_info_simple",
+  socio: "socio_simple",
+  engineering: "engineering_simple",
+  inventory: "inventory_simple",
+};
+
+const engineeringCatchmentPrefixes = [
+  "mumty_s_rooftop",
+  "rooftop_1",
+  "rooftop_2",
+  "balcony_1",
+  "balcony_2",
+  "balcony_3",
+  "terrace_1",
+  "terrace_2",
+  "terrace_3",
+  "shade_1",
+  "shade_2",
+  "shade_3",
+];
+
 let pool;
 
 const sharedIdentityColumns = [
@@ -60,9 +84,6 @@ const predefinedColumnsByTable = {
     "housing_structure_type",
     "roof_type",
     "household_members_count",
-    "household_members_json",
-    "selected_facilities_json",
-    "selected_utilities_json",
     "water_quantity",
     "water_quality",
     "household_solid_waste_disposal",
@@ -141,15 +162,12 @@ const predefinedColumnsByTable = {
     "drainage_arrangement_rainwater_is_drained_directly_into_street",
     "drainage_arrangement_rainwater_is_drained_into_courtyard_or_other_part_of_house",
     "drainage_arrangement_other_text",
-    "catchment_rows_json",
     "underground_tank_count",
     "underground_tank_material",
     "underground_tank_total_capacity",
-    "underground_tanks_json",
     "overhead_tank_count",
     "overhead_tank_material",
     "overhead_tank_total_capacity",
-    "overhead_tanks_json",
   ],
   inventory: [
     ...sharedIdentityColumns,
@@ -158,7 +176,6 @@ const predefinedColumnsByTable = {
     "selected_tank_size_liters",
     "pallet_spec_for_selected_tank",
     "other_items_count",
-    "other_items_json",
     "water_tank_size_liters",
     "water_tank_quantity",
     "pvc_pipes_quantity",
@@ -226,6 +243,17 @@ const parseJson = (value, fallback) => {
 
 const stringifyJson = (value) => JSON.stringify(value ?? null);
 
+const escapeSqlIdentifier = (value) => `\`${String(value).replace(/`/g, "``")}\``;
+
+const tableStoresRawPayload = (tableName) => tablesWithRawPayload.has(tableName);
+
+const parseJsonArray = (value) => {
+  const parsed = parseJson(value, []);
+  return Array.isArray(parsed) ? parsed : [];
+};
+
+const isRawJsonExportColumn = (columnName) => columnName === "payload_json" || String(columnName || "").endsWith("_json");
+
 const sanitizeSqlIdentifier = (value, fallback = "field") => {
   const normalized = String(value || "")
     .trim()
@@ -237,6 +265,30 @@ const sanitizeSqlIdentifier = (value, fallback = "field") => {
     .slice(0, 56);
   const safe = normalized || fallback;
   return /^[0-9]/.test(safe) ? `field_${safe}` : safe;
+};
+
+const isNestedDynamicExportColumn = (columnName) =>
+  /_drainage_point_\d+_diameter$/.test(columnName) ||
+  /_tank_\d+_(depth|width|length|capacity)$/.test(columnName) ||
+  /_(width_ft|length_ft|area_sq_ft)$/.test(columnName);
+
+const getPredefinedExportColumnSet = (tableName) =>
+  new Set([
+    "created_at",
+    "updated_at",
+    ...(predefinedColumnsByTable[tableName] || []).map((columnName, index) => sanitizeSqlIdentifier(columnName, `field_${index + 1}`)),
+  ]);
+
+const isSimpleExportColumn = (tableName, columnName) => {
+  if (isRawJsonExportColumn(columnName)) {
+    return false;
+  }
+
+  if (!tableName) {
+    return true;
+  }
+
+  return getPredefinedExportColumnSet(tableName).has(columnName) || isNestedDynamicExportColumn(columnName);
 };
 
 const normalizeCellValue = (value) => {
@@ -302,25 +354,21 @@ const withConnection = async (handler) => {
 const createSchemaStatements = [
   `CREATE TABLE IF NOT EXISTS household_info (
     household_id VARCHAR(64) NOT NULL PRIMARY KEY,
-    payload_json JSON NULL,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   `CREATE TABLE IF NOT EXISTS socio (
     household_id VARCHAR(64) NOT NULL PRIMARY KEY,
-    payload_json JSON NULL,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   `CREATE TABLE IF NOT EXISTS engineering (
     household_id VARCHAR(64) NOT NULL PRIMARY KEY,
-    payload_json JSON NULL,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   `CREATE TABLE IF NOT EXISTS inventory (
     household_id VARCHAR(64) NOT NULL PRIMARY KEY,
-    payload_json JSON NULL,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
@@ -362,6 +410,10 @@ const ensureSchema = async () => {
     for (const tableName of [tableNames.household, tableNames.socio, tableNames.engineering, tableNames.inventory]) {
       await backfillPayloadJsonToColumns(connection, tableName);
     }
+
+    for (const tableName of [tableNames.household, tableNames.socio, tableNames.engineering, tableNames.inventory]) {
+      await ensureSimpleExportView(connection, tableName);
+    }
   });
 };
 
@@ -390,21 +442,96 @@ const buildStoredRowData = (rowData = {}, payload = {}, extraData = {}) => {
       ? payload.tableRow
       : {};
 
-  return {
+  const mergedRow = {
     ...extractTopLevelScalarFields(payload),
     ...extractTopLevelScalarFields(extraData),
     ...payloadTableRow,
     ...(rowData && typeof rowData === "object" ? rowData : {}),
   };
+
+  return {
+    ...mergedRow,
+    ...expandNestedTableData(mergedRow),
+  };
 };
+
+const getPayloadTableRow = (payload = {}) => {
+  const normalizedPayload = payload && typeof payload === "object" ? payload : {};
+  const tableRow = normalizedPayload.tableRow && typeof normalizedPayload.tableRow === "object" && !Array.isArray(normalizedPayload.tableRow)
+    ? normalizedPayload.tableRow
+    : extractTopLevelScalarFields(normalizedPayload);
+
+  return {
+    ...tableRow,
+    ...expandNestedTableData(tableRow),
+  };
+};
+
+const expandCatchmentRows = (value) => {
+  const columns = {};
+  const rows = parseJsonArray(value);
+
+  rows.forEach((catchmentRow, index) => {
+    if (!catchmentRow || typeof catchmentRow !== "object") {
+      return;
+    }
+
+    const prefix = sanitizeSqlIdentifier(catchmentRow.areaName || catchmentRow.name || `catchment_${index + 1}`, `catchment_${index + 1}`);
+    columns[`${prefix}_width_ft`] = normalizeCellValue(catchmentRow.widthFt ?? catchmentRow.width ?? "");
+    columns[`${prefix}_length_ft`] = normalizeCellValue(catchmentRow.lengthFt ?? catchmentRow.length ?? "");
+    columns[`${prefix}_area_sq_ft`] = normalizeCellValue(catchmentRow.areaSqFt ?? catchmentRow.area ?? "");
+
+    parseJsonArray(catchmentRow.drainagePoints).forEach((point, pointIndex) => {
+      const pointNumber = point && typeof point === "object" && point.point ? point.point : pointIndex + 1;
+      const diameter = point && typeof point === "object" ? point.diameter : point;
+      columns[`${prefix}_drainage_point_${pointNumber}_diameter`] = normalizeCellValue(diameter ?? "");
+    });
+  });
+
+  return columns;
+};
+
+const expandTankRows = (value, tankType) => {
+  const columns = {};
+  const rows = parseJsonArray(value);
+
+  rows.forEach((tankRow, index) => {
+    if (!tankRow || typeof tankRow !== "object") {
+      return;
+    }
+
+    const prefix = `${sanitizeSqlIdentifier(tankType, "tank")}_tank_${index + 1}`;
+    columns[`${prefix}_depth`] = normalizeCellValue(tankRow.depth ?? "");
+    columns[`${prefix}_width`] = normalizeCellValue(tankRow.width ?? "");
+    columns[`${prefix}_length`] = normalizeCellValue(tankRow.length ?? "");
+    columns[`${prefix}_capacity`] = normalizeCellValue(tankRow.capacity ?? "");
+  });
+
+  return columns;
+};
+
+const expandNestedTableData = (rowData = {}) => ({
+  ...expandCatchmentRows(rowData.catchment_rows_json),
+  ...expandTankRows(rowData.underground_tanks_json, "underground"),
+  ...expandTankRows(rowData.overhead_tanks_json, "overhead"),
+});
 
 const upsertDynamicRow = async (connection, tableName, householdId, rowData = {}, payload = {}, extraData = {}) => {
   const normalizedRow = toColumnMap(buildStoredRowData(rowData, payload, extraData));
   delete normalizedRow.household_id;
+
+  if (!tableStoresRawPayload(tableName)) {
+    Object.keys(normalizedRow).forEach((columnName) => {
+      if (isRawJsonExportColumn(columnName) || !isSimpleExportColumn(tableName, columnName)) {
+        delete normalizedRow[columnName];
+      }
+    });
+  }
+
   await ensureDynamicColumns(connection, tableName, normalizedRow);
 
   const data = {
-    payload_json: stringifyJson(payload),
+    ...(tableStoresRawPayload(tableName) ? { payload_json: stringifyJson(payload) } : {}),
     ...normalizedRow,
   };
 
@@ -422,6 +549,10 @@ const upsertDynamicRow = async (connection, tableName, householdId, rowData = {}
 };
 
 const backfillPayloadJsonToColumns = async (connection, tableName) => {
+  if (!tableStoresRawPayload(tableName)) {
+    return;
+  }
+
   const [rows] = await connection.query(
     `SELECT household_id, payload_json FROM \`${tableName}\` WHERE payload_json IS NOT NULL`
   );
@@ -434,6 +565,26 @@ const backfillPayloadJsonToColumns = async (connection, tableName) => {
 
     await upsertDynamicRow(connection, tableName, row.household_id, {}, payload);
   }
+};
+
+const ensureSimpleExportView = async (connection, tableName) => {
+  const viewName = simpleViewNamesByTable[tableName];
+  if (!viewName) {
+    return;
+  }
+
+  const [rows] = await connection.query(`SHOW COLUMNS FROM ${escapeSqlIdentifier(tableName)}`);
+  const columns = rows.map((row) => row.Field).filter((columnName) => isSimpleExportColumn(tableName, columnName));
+
+  if (columns.length === 0) {
+    return;
+  }
+
+  await connection.query(
+    `CREATE OR REPLACE VIEW ${escapeSqlIdentifier(viewName)} AS
+     SELECT ${columns.map(escapeSqlIdentifier).join(", ")}
+     FROM ${escapeSqlIdentifier(tableName)}`
+  );
 };
 
 const upsertStatusRow = async (connection, householdId, patch = {}) => {
@@ -531,12 +682,169 @@ const getStatusPatchForForm = (formKey, status, payload = {}, householdPatch = {
   return patch;
 };
 
-const normalizeRowForExport = (row = {}) =>
-  Object.fromEntries(
-    Object.entries(row)
-      .filter(([key]) => key !== "payload_json")
-      .map(([key, value]) => [key, value === null || value === undefined ? "" : value])
-  );
+const normalizeRowForExport = (row = {}, tableName = "") => {
+  const payload = parseJson(row.payload_json, {});
+  const payloadColumns = toColumnMap(getPayloadTableRow(payload));
+  const systemColumns = {};
+  const exported = {};
+
+  if (Object.prototype.hasOwnProperty.call(row, "household_id")) {
+    exported.household_id = row.household_id ?? "";
+  }
+
+  Object.entries(payloadColumns).forEach(([key, value]) => {
+    if (isSimpleExportColumn(tableName, key) && key !== "household_id") {
+      exported[key] = value ?? "";
+    }
+  });
+
+  Object.entries(row).forEach(([key, value]) => {
+    if (!isSimpleExportColumn(tableName, key) || key === "household_id") {
+      return;
+    }
+
+    if (key === "created_at" || key === "updated_at") {
+      systemColumns[key] = value === null || value === undefined ? "" : value;
+      return;
+    }
+
+    const normalizedValue = value === null || value === undefined ? "" : value;
+    if (!Object.prototype.hasOwnProperty.call(exported, key) || exported[key] === "") {
+      exported[key] = normalizedValue;
+    }
+  });
+
+  return {
+    ...exported,
+    ...systemColumns,
+  };
+};
+
+const buildEngineeringCatchmentRowsFromFlatRow = (row = {}) =>
+  engineeringCatchmentPrefixes.map((prefix) => ({
+    width: row[`${prefix}_width_ft`] || "",
+    length: row[`${prefix}_length_ft`] || "",
+    area: row[`${prefix}_area_sq_ft`] || "",
+  }));
+
+const buildInventoryItemsFromFlatRow = (row = {}) =>
+  Array.from({ length: 10 }, (_, index) => {
+    const itemNumber = index + 1;
+    const name = row[`other_item_${itemNumber}_name`] || "";
+    const quantity = row[`other_item_${itemNumber}_quantity`] || "";
+    return name || quantity
+      ? {
+          name,
+          quantity,
+          specification: "",
+          isCustom: true,
+        }
+      : null;
+  }).filter(Boolean);
+
+const buildFlatFormPayload = (formKey, row = {}) => {
+  const tableName = getTableName(formKey);
+  const tableRow = normalizeRowForExport(row, tableName);
+
+  if (formKey === "household") {
+    return {
+      householdId: row.household_id || "",
+      surveyDate: row.survey_date || "",
+      householdLocation: row.household_location || "",
+      city: row.city || "",
+      ucnc: row.ucnc || "",
+      address: row.interview_address || "",
+      catchmentArea: row.catchment_area || "",
+      tankSpace: row.tank_space || "",
+      enumeratorName: row.enumerator_name || "",
+      respondentIsHouseholdHead: row.respondent_is_household_head || "",
+      relationshipToHead: row.relationship_to_head || "",
+      headName: row.household_head_name || row.respondent_name || "",
+      respondentName: row.respondent_name || "",
+      respondentCnic: row.respondent_cnic || "",
+      headCnic: row.head_cnic || "",
+      respondentGender: row.respondent_gender || "",
+      respondentPhoneNumber: row.respondent_phone_number || "",
+      respondentAge: row.respondent_age || "",
+      eligibilityStatus: row.eligibility_status || "",
+      tableRow,
+    };
+  }
+
+  if (formKey === "seaf") {
+    return {
+      facilities: [],
+      utilities: [],
+      formState: {
+        version: 1,
+        meta: {
+          personCount: row.household_members_count || "1",
+        },
+        controls: [],
+      },
+      tableRow,
+    };
+  }
+
+  if (formKey === "inventory") {
+    const items = buildInventoryItemsFromFlatRow(row);
+
+    return {
+      catchmentArea: row.catchment_area_from_engineering || "",
+      recommendedTank: row.recommended_tank || "",
+      selectedTankSize: row.selected_tank_size_liters || "",
+      palletSpec: row.pallet_spec_for_selected_tank || "",
+      otherItems: items.map(({ name, quantity }) => ({ name, quantity })),
+      items,
+      formState: {
+        version: 1,
+        meta: {
+          otherItemsCount: row.other_items_count || String(items.length),
+        },
+        controls: [],
+      },
+      tableRow,
+    };
+  }
+
+  if (formKey === "engineering") {
+    return {
+      engineerName: row.engineer_name || "",
+      housingWidth: row.housing_width_ft || "",
+      housingDepth: row.housing_depth_ft || "",
+      housingArea: row.housing_area_sq_ft || "",
+      catchmentRows: buildEngineeringCatchmentRowsFromFlatRow(row),
+      catchmentTotalArea: row.total_catchment_area_sq_ft || "",
+      engineeringCatchmentArea: row.total_catchment_area_sq_ft || "",
+      engineeringCatchmentTotalArea: row.total_catchment_area_sq_ft || "",
+      waterNeedArea: row.water_need_area_a_sq_ft || "",
+      waterNeedSpace: row.water_need_space_s_cubic_ft || "",
+      waterNeedQuantity: row.water_need_quantity_q_liters || "",
+      waterNeedHouseholdSize: row.water_need_household_size || "",
+      waterNeedDaily: row.water_need_daily_liters || "",
+      engineeringTankSpace: row.water_need_storage_liters || "",
+      proposedStorageCapacity: row.proposed_storage_capacity || "",
+      formState: {
+        version: 1,
+        meta: {
+          tankCounts: {
+            underground: row.underground_tank_count || "0",
+            overhead: row.overhead_tank_count || "0",
+          },
+        },
+        controls: [],
+      },
+      tableRow,
+    };
+  }
+
+  return { tableRow };
+};
+
+const buildFormPayloadFromRow = (formKey, row = {}) => {
+  const rawPayload = tableStoresRawPayload(getTableName(formKey)) ? parseJson(row.payload_json, null) : null;
+  return rawPayload && typeof rawPayload === "object" ? rawPayload : buildFlatFormPayload(formKey, row);
+};
 
 const buildHouseholdRecord = (householdRow = {}, statusRow = {}, engineeringRow = {}, inventoryRow = {}) => {
   const householdPayload = parseJson(householdRow.payload_json, {});
@@ -581,7 +889,7 @@ const listDedicatedFormRows = async (formKey) => {
   }
 
   const [rows] = await ensurePool().query(`SELECT * FROM \`${tableName}\` ORDER BY updated_at DESC, household_id DESC`);
-  return rows.map(normalizeRowForExport);
+  return rows.map((row) => normalizeRowForExport(row, tableName));
 };
 
 const listHouseholds = async () => {
@@ -616,17 +924,14 @@ const getFormSubmission = async (formKey, householdId) => {
     return null;
   }
 
-  const [rows] = await ensurePool().query(
-    `SELECT household_id, payload_json, updated_at FROM \`${tableName}\` WHERE household_id = ?`,
-    [householdId]
-  );
+  const [rows] = await ensurePool().query(`SELECT * FROM \`${tableName}\` WHERE household_id = ?`, [householdId]);
 
   if (!rows[0]) {
     return null;
   }
 
   return {
-    payload: parseJson(rows[0].payload_json, {}),
+    payload: buildFormPayloadFromRow(formKey, rows[0]),
     submittedAt: rows[0].updated_at || null,
   };
 };
@@ -674,7 +979,7 @@ const getSnapshot = async () => {
       }
 
       formSubmissions[row.household_id][formKey] = {
-        payload: parseJson(row.payload_json, {}),
+        payload: buildFormPayloadFromRow(formKey, row),
         submittedAt: row.updated_at || null,
       };
     });

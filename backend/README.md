@@ -9,11 +9,13 @@ For new installs, the default is `shehersaaz_forms`.
 
 ## What gets saved
 
-- `households` stores the household profile and household assessment snapshot.
-- `submitted_forms` stores the submission status for each household and form stage.
-- `form_submissions` stores the raw submitted payload for each form.
-- `seaf_responses` stores socioeconomic form responses.
-- `generated_ids` stores household IDs that have been created.
+- `household_info` stores household assessment rows.
+- `socio` stores socioeconomic assessment rows.
+- `engineering` stores engineering assessment rows.
+- `inventory` stores inventory assessment rows.
+- `assessment_status` stores the submission status for each household and form stage.
+
+The form tables are flat, Excel-ready tables without raw JSON columns.
 
 ## How the save flow works
 
@@ -28,9 +30,11 @@ Use any MySQL client, then run queries like:
 
 ```sql
 USE shehersaaz_forms;
-SELECT * FROM households ORDER BY updated_at DESC;
-SELECT * FROM submitted_forms ORDER BY updated_at DESC;
-SELECT * FROM form_submissions ORDER BY submitted_at DESC;
+SELECT * FROM household_info ORDER BY updated_at DESC;
+SELECT * FROM socio ORDER BY updated_at DESC;
+SELECT * FROM engineering ORDER BY updated_at DESC;
+SELECT * FROM inventory ORDER BY updated_at DESC;
+SELECT * FROM assessment_status ORDER BY updated_at DESC;
 ```
 
 You can also inspect a combined snapshot through:
@@ -42,12 +46,23 @@ You can also inspect a combined snapshot through:
 - `GET /api/export?dataset=inventory&format=csv`
 - `GET /api/export?dataset=snapshot&format=json`
 
+For Excel-ready MySQL rows without raw JSON columns, query the generated simple views:
+
+```sql
+SELECT * FROM household_info_simple;
+SELECT * FROM socio_simple;
+SELECT * FROM engineering_simple;
+SELECT * FROM inventory_simple;
+```
+
 Supported export datasets:
 
 - `households`
+- `household-info`
 - `submitted-forms`
+- `status`
 - `form-submissions`
-- `seaf-responses`
+- `socio`
 - `seaf`
 - `engineering`
 - `inventory`
