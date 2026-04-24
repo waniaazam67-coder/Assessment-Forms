@@ -407,43 +407,51 @@ function getOverviewStats(records) {
   const seafDone = records.filter((record) => record?.stageStatus?.seaf).length;
   const engineeringDone = records.filter((record) => record?.stageStatus?.engineering).length;
   const readyCount = records.filter((record) => record?.stageStatus?.seaf && record?.stageStatus?.engineering && record?.stageStatus?.inventory).length;
+  const totalSafe = totalAssessed || 1;
 
   return [
     {
       label: "Total households assessed",
       value: totalAssessed,
-      icon: "households",
-      tone: "mint",
+      subtext: `+${Math.max(0, totalAssessed - eligibleCount - notEligibleCount)} this week`,
+      subtextTone: "positive",
+      progress: 100,
+      progressTone: "blue",
     },
     {
-      label: "Eligible / Passed households",
+      label: "Eligible households",
       value: eligibleCount,
-      icon: "eligible",
-      tone: "sky",
+      subtext: `${Math.round((eligibleCount / totalSafe) * 100)}% of assessed`,
+      progress: Math.round((eligibleCount / totalSafe) * 100),
+      progressTone: "green",
     },
     {
       label: "Not eligible",
       value: notEligibleCount,
-      icon: "rejected",
-      tone: "rose",
+      subtext: `${Math.round((notEligibleCount / totalSafe) * 100)}% of assessed`,
+      progress: Math.round((notEligibleCount / totalSafe) * 100),
+      progressTone: "red",
     },
     {
-      label: "Socioeconomic assessment done",
+      label: "SEAF done",
       value: seafDone,
-      icon: "seaf",
-      tone: "gold",
+      subtext: `${Math.round((seafDone / totalSafe) * 100)}% of assessed`,
+      progress: Math.round((seafDone / totalSafe) * 100),
+      progressTone: "blue",
     },
     {
-      label: "Engineering assessment done",
+      label: "Engineering done",
       value: engineeringDone,
-      icon: "engineering",
-      tone: "peach",
+      subtext: `${Math.round((engineeringDone / totalSafe) * 100)}% of assessed`,
+      progress: Math.round((engineeringDone / totalSafe) * 100),
+      progressTone: "violet",
     },
     {
       label: "Ready for RWHU installation",
       value: readyCount,
-      icon: "ready",
-      tone: "mint",
+      subtext: `${Math.round((readyCount / totalSafe) * 100)}% of assessed`,
+      progress: Math.round((readyCount / totalSafe) * 100),
+      progressTone: "teal",
     },
   ];
 }
@@ -530,16 +538,46 @@ function renderMetrics(container, records) {
   container.innerHTML = "";
   getOverviewStats(records).forEach((metric) => {
     const item = document.createElement("article");
-    item.className = `admin-metric admin-metric--${metric.tone || "mint"}`;
+    item.className = "admin-overview-card admin-metric";
     item.innerHTML = `
-      <div class="admin-metric__icon">${metricIcon(metric.icon)}</div>
-      <div class="admin-metric__body">
-        <p class="admin-muted">${metric.label}</p>
-        <h3>${metric.value}</h3>
+      <span class="admin-metric__label">${escapeHtml(metric.label)}</span>
+      <strong class="admin-metric__value">${escapeHtml(metric.value)}</strong>
+      <span class="admin-metric__subtext${metric.subtextTone === "positive" ? " admin-metric__subtext--positive" : ""}">${escapeHtml(metric.subtext || "")}</span>
+      <div class="admin-progress" aria-hidden="true">
+        <div class="admin-progress__bar admin-progress__bar--${escapeHtml(metric.progressTone || "blue")}" style="width: ${Math.max(0, Math.min(100, Number(metric.progress) || 0))}%"></div>
       </div>
     `;
     container.append(item);
   });
+}
+
+function renderPipeline(container, records) {
+  if (!container) {
+    return;
+  }
+
+  const stats = getOverviewStats(records);
+  const rows = [
+    { label: "Total assessed", value: stats[0]?.value || 0, progress: 100, tone: "blue" },
+    { label: "Eligible households", value: stats[1]?.value || 0, progress: stats[1]?.progress || 0, tone: "green" },
+    { label: "SEAF completed", value: stats[3]?.value || 0, progress: stats[3]?.progress || 0, tone: "blue" },
+    { label: "Engineering done", value: stats[4]?.value || 0, progress: stats[4]?.progress || 0, tone: "violet" },
+    { label: "Ready for RWHU install", value: stats[5]?.value || 0, progress: stats[5]?.progress || 0, tone: "teal" },
+  ];
+
+  container.innerHTML = rows
+    .map(
+      (row) => `
+        <div class="admin-pipeline__row">
+          <strong>${escapeHtml(row.label)}</strong>
+          <div class="admin-progress" aria-hidden="true">
+            <div class="admin-progress__bar admin-progress__bar--${escapeHtml(row.tone)}" style="width: ${Math.max(0, Math.min(100, Number(row.progress) || 0))}%"></div>
+          </div>
+          <span class="admin-pipeline__value">${escapeHtml(row.value)}</span>
+        </div>
+      `
+    )
+    .join("");
 }
 
 function renderDataTable(container, records, filters = {}) {
@@ -586,18 +624,18 @@ function renderDataTable(container, records, filters = {}) {
 
   filtered.forEach((record) => {
     const row = document.createElement("tr");
-    const location = [record.city, record.ucnc, record.address].filter(Boolean).join(", ") || "-";
+    const location = [record.city, record.ucnc].filter(Boolean).join(", ") || "-";
     const isPassed = normalizeStatus(record.eligibilityStatus) === "passed";
-    const statusLabel = isPassed ? "Passed" : "Failed";
-    const staffLabel = record.cmoName || record.engineerName ? [record.cmoName, record.engineerName].filter(Boolean).join(" / ") : "No staff captured";
+    const statusLabel = isPassed ? "Eligible" : "Not eligible";
+    const headLabel = record.headName || "-";
 
     row.innerHTML = `
       <td>${escapeHtml(record.householdId || "-")}</td>
       <td>
-        <strong class="admin-table__primary">${escapeHtml(location)}</strong>
-        <small class="admin-table__meta">${escapeHtml(staffLabel)}</small>
+        <strong class="admin-table__primary">${escapeHtml(headLabel)}</strong>
+        <small class="admin-table__meta">${escapeHtml(record.address || "Address not captured")}</small>
       </td>
-      <td>${escapeHtml(record.catchmentArea || "-")}</td>
+      <td>${escapeHtml(location)}</td>
       <td>${escapeHtml(record.tankSpace || "-")}</td>
       <td><span class="admin-chip admin-chip--${isPassed ? "green" : "failed"}">${statusLabel}</span></td>
     `;
@@ -669,36 +707,46 @@ function renderHouseholdList(container, records, searchTerm = "") {
 
   container.innerHTML = filtered
     .map((record) => {
-      const summary = countSubmitted(record);
-      const location = [record.city, record.ucnc, record.address].filter(Boolean).join(", ") || "Location not captured yet";
-      const eligibility = normalizeStatus(record.eligibilityStatus) === "passed" ? "Passed" : normalizeStatus(record.eligibilityStatus) === "failed" ? "Failed" : "Pending";
-      const updatedAt = record.updatedAt ? formatDateTime(record.updatedAt) : "No recent backend update";
+      const eligibility = normalizeStatus(record.eligibilityStatus) === "passed" ? "Eligible" : normalizeStatus(record.eligibilityStatus) === "failed" ? "Not eligible" : "Pending";
+      const readiness = record.stageStatus?.inventory && record.stageStatus?.engineering && record.stageStatus?.seaf ? "Yes" : "No";
+      const zone = [record.city, record.ucnc].filter(Boolean).join(", ") || "Area not captured";
+      const engineer = record.engineerName || "Not assigned";
+      const enumerator = record.cmoName || "Not captured";
 
       return `
         <article class="admin-household-card">
           <div class="admin-household-card__header">
             <div>
-              <h4>${escapeHtml(record.headName || "-")}</h4>
-              <p>${escapeHtml(record.householdId || "-")}</p>
+              <h4>${escapeHtml(record.householdId || "-")}</h4>
+              <p class="admin-household-card__id">${escapeHtml(record.updatedAt ? `Updated ${formatDate(record.updatedAt)}` : "No recent update")}</p>
             </div>
             <span class="admin-chip admin-chip--${getChipTone(eligibility)}">${escapeHtml(eligibility)}</span>
           </div>
-          <p class="admin-household-card__location">${escapeHtml(location)}</p>
-          <div class="admin-household-card__meta">
-            <span>Survey date: ${escapeHtml(formatDate(record.surveyDate))}</span>
-            <span>Catchment: ${escapeHtml(record.catchmentArea || "-")}</span>
-            <span>Tank space: ${escapeHtml(record.tankSpace || "-")}</span>
-            <span>Updated: ${escapeHtml(updatedAt)}</span>
-          </div>
-          <div class="admin-household-card__staff">
-            <span>CMO: ${escapeHtml(record.cmoName || "Not captured")}</span>
-            <span>Engineer: ${escapeHtml(record.engineerName || "Not captured")}</span>
-          </div>
-          <div class="admin-household-card__stages">
-            <span class="admin-chip admin-chip--${getChipTone(record.status?.household)}">Household: ${escapeHtml(record.status?.household || "Pending")}</span>
-            <span class="admin-chip admin-chip--${getChipTone(summary.seaf ? "Submitted" : "Pending")}">SEAF: ${summary.seaf ? "Submitted" : "Pending"}</span>
-            <span class="admin-chip admin-chip--${getChipTone(summary.engineering ? "Submitted" : "Pending")}">Engineering: ${summary.engineering ? "Submitted" : "Pending"}</span>
-            <span class="admin-chip admin-chip--${getChipTone(summary.inventory ? "Submitted" : "Pending")}">Inventory: ${summary.inventory ? "Submitted" : "Pending"}</span>
+          <div class="admin-household-card__grid">
+            <div class="admin-household-card__item">
+              <span>Head of household</span>
+              <strong>${escapeHtml(record.headName || "Not captured")}</strong>
+            </div>
+            <div class="admin-household-card__item">
+              <span>Area / Zone</span>
+              <strong>${escapeHtml(zone)}</strong>
+            </div>
+            <div class="admin-household-card__item">
+              <span>Tank size</span>
+              <strong>${escapeHtml(record.tankSpace || "N/A")}</strong>
+            </div>
+            <div class="admin-household-card__item">
+              <span>Enumerator</span>
+              <strong>${escapeHtml(enumerator)}</strong>
+            </div>
+            <div class="admin-household-card__item">
+              <span>Engineer</span>
+              <strong>${escapeHtml(engineer)}</strong>
+            </div>
+            <div class="admin-household-card__item">
+              <span>RWHU ready</span>
+              <strong>${escapeHtml(readiness)}</strong>
+            </div>
           </div>
         </article>
       `;
@@ -875,8 +923,11 @@ async function bootDashboardPage() {
   const name = document.querySelector("[data-admin-user-name]");
   const email = document.querySelector("[data-admin-user-email]");
   const metrics = document.querySelector("[data-admin-metrics]");
+  const pipeline = document.querySelector("[data-admin-pipeline]");
   const pages = Array.from(document.querySelectorAll("[data-admin-page]"));
   const navLinks = Array.from(document.querySelectorAll(".admin-nav__link"));
+  const pageTitle = document.querySelector("[data-admin-page-title]");
+  const pageSubtitle = document.querySelector("[data-admin-page-subtitle]");
   const tableBody = document.querySelector("[data-admin-data-table-body]");
   const dataSource = document.querySelector("[data-admin-data-source]");
   const refreshButton = document.querySelector("[data-admin-refresh]");
@@ -914,6 +965,24 @@ async function bootDashboardPage() {
 
   const setActivePage = (pageId) => {
     const normalized = pageId || "overview";
+    const copy = {
+      overview: {
+        title: "Overview",
+        subtitle: "Assessment programme summary",
+      },
+      households: {
+        title: "Households",
+        subtitle: "Individual household records",
+      },
+      "data-tables": {
+        title: "Data tables",
+        subtitle: "Filter, explore and export data",
+      },
+      access: {
+        title: "Settings",
+        subtitle: "System status and recent activity",
+      },
+    };
 
     pages.forEach((page) => {
       const isActive = page.id === normalized;
@@ -925,6 +994,14 @@ async function bootDashboardPage() {
       const linkHash = (link.getAttribute("href") || "").replace("#", "");
       link.classList.toggle("is-active", linkHash === normalized);
     });
+
+    if (pageTitle) {
+      pageTitle.textContent = copy[normalized]?.title || "Overview";
+    }
+
+    if (pageSubtitle) {
+      pageSubtitle.textContent = copy[normalized]?.subtitle || "Assessment programme summary";
+    }
   };
 
   const renderTable = () => {
@@ -979,6 +1056,7 @@ async function bootDashboardPage() {
     }
 
     renderMetrics(metrics, records);
+    renderPipeline(pipeline, records);
     renderTable();
     renderHouseholds();
     renderAccess();

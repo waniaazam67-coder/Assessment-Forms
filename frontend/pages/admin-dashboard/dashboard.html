@@ -16,38 +16,93 @@
       <div class="admin-brand admin-brand--sidebar">
         <img src="../../assets/images/Shehersaaz Logo Update 2025.png" alt="Shehersaaz Logo">
         <div>
-          <p>Shehersaaz</p>
+          <div class="admin-brand__program">AssessAdmin</div>
+          <p class="admin-brand__name">RWHU Programme</p>
         </div>
       </div>
 
-      <nav class="admin-nav">
-        <a href="#overview" class="admin-nav__link is-active">Overview</a>
-        <a href="#households" class="admin-nav__link">Households</a>
-        <a href="#data-tables" class="admin-nav__link">Data tables</a>
-        <a href="#access" class="admin-nav__link">Access</a>
+      <nav class="admin-nav" aria-label="Dashboard sections">
+        <p class="admin-nav__section">Main</p>
+        <a href="#overview" class="admin-nav__link is-active">
+          <span class="admin-nav__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1.4"></rect>
+              <rect x="14" y="3" width="7" height="7" rx="1.4"></rect>
+              <rect x="3" y="14" width="7" height="7" rx="1.4"></rect>
+              <rect x="14" y="14" width="7" height="7" rx="1.4"></rect>
+            </svg>
+          </span>
+          <span>Overview</span>
+        </a>
+        <a href="#households" class="admin-nav__link">
+          <span class="admin-nav__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 10.5 12 3l9 7.5"></path>
+              <path d="M5 9.5V21h5v-6h4v6h5V9.5"></path>
+            </svg>
+          </span>
+          <span>Households</span>
+        </a>
+        <a href="#data-tables" class="admin-nav__link">
+          <span class="admin-nav__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+              <path d="M3 10h18"></path>
+              <path d="M9 4v16"></path>
+            </svg>
+          </span>
+          <span>Data tables</span>
+        </a>
+
+        <p class="admin-nav__section">System</p>
+        <a href="#access" class="admin-nav__link">
+          <span class="admin-nav__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82L4.21 7.2a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33h0A1.65 1.65 0 0 0 10 3.25V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0A1.65 1.65 0 0 0 20.75 10H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </span>
+          <span>Settings</span>
+        </a>
       </nav>
 
       <div class="admin-sidebar__footer">
-        <a class="admin-button admin-button--ghost" href="../index.html">Open Forms Portal</a>
-        <button type="button" class="admin-button admin-button--ghost" data-admin-logout>Logout</button>
+        <div class="admin-user-card">
+          <div class="admin-user-card__avatar">AU</div>
+          <div>
+            <p data-admin-user-name>Admin User</p>
+            <small data-admin-user-email>Programme Manager</small>
+          </div>
+        </div>
+
+        <div class="admin-sidebar__actions">
+          <a class="admin-button admin-button--ghost" href="../index.html">Open forms portal</a>
+          <button type="button" class="admin-button admin-button--soft" data-admin-logout>Log out</button>
+        </div>
       </div>
     </aside>
 
     <section class="admin-content">
       <header class="admin-topbar">
-        <div>
-          <p class="admin-kicker">Private workspace</p>
-          <h2>Assessment Admin Dashboard</h2>
-          <small class="admin-topbar__status" data-admin-data-source>Loading database connection...</small>
+        <div class="admin-topbar__meta">
+          <h2 data-admin-page-title>Overview</h2>
+          <small data-admin-page-subtitle>Assessment programme summary</small>
+          <small class="admin-topbar__status-copy" data-admin-data-source>Loading database connection...</small>
         </div>
-        <div class="admin-topbar__user">
-          <span data-admin-user-name>Admin</span>
-          <small data-admin-user-email>admin@shehersaaz.com</small>
+        <div class="admin-topbar__status">
+          <span class="admin-pill admin-pill--success">Active</span>
+          <span class="admin-pill">April 2026</span>
         </div>
       </header>
 
       <section class="admin-page is-active" id="overview" data-admin-page="overview">
-        <section class="admin-metrics" data-admin-metrics></section>
+        <div class="admin-overview-grid">
+          <section class="admin-metrics" data-admin-metrics></section>
+          <section class="admin-pipeline">
+            <h3>Assessment pipeline</h3>
+            <div class="admin-pipeline__rows" data-admin-pipeline></div>
+          </section>
+        </div>
       </section>
 
       <section class="admin-page" id="households" data-admin-page="households" hidden>
@@ -55,13 +110,15 @@
           <div class="admin-card__header">
             <div>
               <h3>Households</h3>
-              <p class="admin-card__subtitle">Browse live household records, assessment progress, and saved engineering details from MySQL.</p>
+              <p class="admin-card__subtitle">Individual household records</p>
             </div>
           </div>
+
           <label class="admin-household-search">
-            <span>Search households</span>
-            <input type="search" class="admin-search" placeholder="Household ID, head name, city, UC/NC, staff name" data-admin-household-search>
+            <span>Search by household ID, name, or area</span>
+            <input type="search" class="admin-search" placeholder="Search by household ID, name, or area..." data-admin-household-search>
           </label>
+
           <div class="admin-summary-grid" data-admin-household-summary></div>
           <div class="admin-household-list" data-admin-household-list>
             <div class="admin-placeholder">Loading household records from the backend...</div>
@@ -70,11 +127,11 @@
       </section>
 
       <section class="admin-page" id="data-tables" data-admin-page="data-tables" hidden>
-        <article class="admin-card admin-card--full">
+        <article class="admin-card">
           <div class="admin-card__header">
             <div>
               <h3>Data tables</h3>
-              <p class="admin-card__subtitle">Filter submitted households by location, status, staff, date range, and assessment stage.</p>
+              <p class="admin-card__subtitle">Filter, explore and export data</p>
             </div>
             <div class="admin-actions">
               <button type="button" class="admin-button admin-button--ghost" data-admin-refresh>Refresh</button>
@@ -82,54 +139,57 @@
               <button type="button" class="admin-button" data-admin-export-json>Download JSON</button>
             </div>
           </div>
+
           <div class="admin-actions admin-actions--export-row">
             <button type="button" class="admin-button admin-button--ghost" data-admin-export-seaf>Download SEAF CSV</button>
             <button type="button" class="admin-button admin-button--ghost" data-admin-export-engineering>Download Engineering CSV</button>
             <button type="button" class="admin-button admin-button--ghost" data-admin-export-inventory>Download Inventory CSV</button>
           </div>
+
           <div class="admin-filters" data-admin-filters>
             <label class="admin-filter">
-              <span>Location</span>
+              <span>Location / zone</span>
               <input type="text" placeholder="City, UC/NC, address" data-admin-filter-location>
             </label>
             <label class="admin-filter">
               <span>Status</span>
               <select data-admin-filter-status>
                 <option value="">All statuses</option>
-                <option value="passed">Passed</option>
-                <option value="failed">Failed</option>
+                <option value="passed">Eligible</option>
+                <option value="failed">Not eligible</option>
               </select>
             </label>
             <label class="admin-filter">
-              <span>CMO or Engineer</span>
-              <input type="text" placeholder="Name" data-admin-filter-name>
+              <span>Enumerator</span>
+              <input type="text" placeholder="Enumerator name" data-admin-filter-name>
             </label>
             <label class="admin-filter">
-              <span>Start date</span>
+              <span>Engineer</span>
+              <select data-admin-filter-stage>
+                <option value="">All stages</option>
+                <option value="seaf">SEAF completed</option>
+                <option value="engineering">Engineering completed</option>
+                <option value="inventory">Inventory completed</option>
+              </select>
+            </label>
+            <label class="admin-filter">
+              <span>From</span>
               <input type="date" data-admin-filter-start-date>
             </label>
             <label class="admin-filter">
-              <span>End date</span>
+              <span>To</span>
               <input type="date" data-admin-filter-end-date>
             </label>
-            <label class="admin-filter">
-              <span>Stage</span>
-              <select data-admin-filter-stage>
-                <option value="">All stages</option>
-                <option value="seaf">SEAF</option>
-                <option value="engineering">Engineering</option>
-                <option value="inventory">Inventory</option>
-              </select>
-            </label>
           </div>
+
           <div class="admin-table-wrap">
             <table class="admin-table">
               <thead>
                 <tr>
-                  <th>Household ID's</th>
-                  <th>Location</th>
-                  <th>Catchment area</th>
-                  <th>Tank space</th>
+                  <th>HH ID</th>
+                  <th>Head of HH</th>
+                  <th>Zone</th>
+                  <th>Tank</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -140,12 +200,12 @@
       </section>
 
       <section class="admin-page" id="access" data-admin-page="access" hidden>
-        <div class="admin-grid">
+        <div class="admin-overview-grid">
           <article class="admin-card">
             <div class="admin-card__header">
               <div>
                 <h3>System status</h3>
-                <p class="admin-card__subtitle">Current backend, database, and sync information for the admin dashboard.</p>
+                <p class="admin-card__subtitle">Current backend, database, and sync health</p>
               </div>
             </div>
             <div class="admin-role-list" data-admin-system-status>
@@ -157,7 +217,7 @@
             <div class="admin-card__header">
               <div>
                 <h3>Recent form activity</h3>
-                <p class="admin-card__subtitle">Latest form submissions detected from the database snapshot.</p>
+                <p class="admin-card__subtitle">Latest form submissions reaching the dashboard feed</p>
               </div>
             </div>
             <div class="admin-activity" data-admin-activity-list>
