@@ -46,7 +46,6 @@ let pool;
 const sharedIdentityColumns = [
   "household_id",
   "selected_household_name",
-  "cnic",
   "respondent_cnic",
   "head_cnic",
 ];
@@ -54,7 +53,6 @@ const sharedIdentityColumns = [
 const predefinedColumnsByTable = {
   household_info: [
     "household_id",
-    "cnic",
     "respondent_cnic",
     "head_cnic",
     "survey_date",
@@ -328,6 +326,16 @@ const toColumnMap = (rowData = {}) =>
     ])
   );
 
+const normalizeNullableForeignKeyCells = (rowData = {}) => {
+  for (const columnName of ["respondent_cnic", "head_cnic"]) {
+    if (Object.prototype.hasOwnProperty.call(rowData, columnName) && String(rowData[columnName] ?? "").trim() === "") {
+      rowData[columnName] = null;
+    }
+  }
+
+  return rowData;
+};
+
 const getTableName = (formKey) => tableNames[formKey] || null;
 
 const ensurePool = () => {
@@ -385,6 +393,57 @@ const createSchemaStatements = [
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 ];
 
+const obsoleteColumnsByTable = {
+  household_info: [
+    "cnic",
+    "householdid",
+    "surveydate",
+    "householdlocation",
+    "address",
+    "catchmentarea",
+    "tankspace",
+    "enumeratorname",
+    "respondentishouseholdhead",
+    "relationshiptohead",
+    "headname",
+    "respondentname",
+    "respondentcnic",
+    "headcnic",
+    "respondentgender",
+    "respondentphonenumber",
+    "respondentage",
+    "eligibilitystatus",
+    "status",
+    "cmoname",
+    "engineername",
+    "updatedat",
+  ],
+  socio: [
+    "cnic",
+    "household_members_json",
+    "selected_facilities_json",
+    "selected_utilities_json",
+    "street_greening_on",
+    "house_greening_on",
+  ],
+  engineering: [
+    "cnic",
+    "catchment_rows_json",
+    "underground_tanks_json",
+    "overhead_tanks_json",
+  ],
+  inventory: [
+    "cnic",
+    "other_items_json",
+  ],
+};
+
+const childFormTablesWithHouseholdCnicFks = [
+  tableNames.socio,
+  tableNames.engineering,
+  tableNames.inventory,
+];
+
 const ensureDatabase = async () => {
   const connection = await mysql.createConnection(bootstrapConfig);
   try {
@@ -411,10 +470,127 @@ const ensureSchema = async () => {
       await backfillPayloadJsonToColumns(connection, tableName);
     }
 
-    for (const tableName of [tableNames.household, tableNames.socio, tableNames.engineering, tableNames.inventory]) {
-      await ensureSimpleExportView(connection, tableName);
-    }
+    await dropObsoleteColumns(connection);
+    await ensureHouseholdCnicForeignKeys(connection);
   });
+};
+
+const getExistingColumnNames = async (connection, tableName) => {
+  const [rows] = await connection.query(`SHOW COLUMNS FROM ${escapeSqlIdentifier(tableName)}`);
+  return new Set(rows.map((row) => row.Field));
+};
+
+const dropObsoleteColumns = async (connection) => {
+  await connection.query("SET FOREIGN_KEY_CHECKS = 0");
+  try {
+    for (const [tableName, columnNames] of Object.entries(obsoleteColumnsByTable)) {
+      const existingColumns = await getExistingColumnNames(connection, tableName);
+      for (const columnName of columnNames) {
+        if (!existingColumns.has(columnName)) {
+          continue;
+        }
+
+        await connection.query(
+          `ALTER TABLE ${escapeSqlIdentifier(tableName)} DROP COLUMN ${escapeSqlIdentifier(columnName)}`
+        );
+      }
+    }
+  } finally {
+    await connection.query("SET FOREIGN_KEY_CHECKS = 1");
+  }
+};
+
+const ensureColumnType = async (connection, tableName, columnName, columnDefinition) => {
+  const existingColumns = await getExistingColumnNames(connection, tableName);
+  if (!existingColumns.has(columnName)) {
+    return;
+  }
+
+  await connection.query(
+    `ALTER TABLE ${escapeSqlIdentifier(tableName)} MODIFY ${escapeSqlIdentifier(columnName)} ${columnDefinition}`
+  );
+};
+
+const ensureIndex = async (connection, tableName, indexName, columnName) => {
+  const [rows] = await connection.query(
+    `SHOW INDEX FROM ${escapeSqlIdentifier(tableName)} WHERE Key_name = ?`,
+    [indexName]
+  );
+  if (rows.length > 0) {
+    return;
+  }
+
+  await connection.query(
+    `CREATE INDEX ${escapeSqlIdentifier(indexName)} ON ${escapeSqlIdentifier(tableName)} (${escapeSqlIdentifier(columnName)})`
+  );
+};
+
+const ensureForeignKey = async (connection, tableName, constraintName, columnName, referencedColumnName) => {
+  const [rows] = await connection.query(
+    `SELECT CONSTRAINT_NAME
+     FROM information_schema.KEY_COLUMN_USAGE
+     WHERE TABLE_SCHEMA = ?
+       AND TABLE_NAME = ?
+       AND CONSTRAINT_NAME = ?
+       AND REFERENCED_TABLE_NAME IS NOT NULL`,
+    [dbConfig.database, tableName, constraintName]
+  );
+  if (rows.length > 0) {
+    return;
+  }
+
+  await connection.query(
+    `ALTER TABLE ${escapeSqlIdentifier(tableName)}
+     ADD CONSTRAINT ${escapeSqlIdentifier(constraintName)}
+     FOREIGN KEY (${escapeSqlIdentifier(columnName)})
+     REFERENCES ${escapeSqlIdentifier(tableNames.household)} (${escapeSqlIdentifier(referencedColumnName)})
+     ON UPDATE CASCADE
+     ON DELETE SET NULL`
+  );
+};
+
+const normalizeCnicReferences = async (connection) => {
+  for (const tableName of [tableNames.household, ...childFormTablesWithHouseholdCnicFks]) {
+    for (const columnName of ["respondent_cnic", "head_cnic"]) {
+      await connection.query(
+        `UPDATE ${escapeSqlIdentifier(tableName)}
+         SET ${escapeSqlIdentifier(columnName)} = NULL
+         WHERE TRIM(COALESCE(${escapeSqlIdentifier(columnName)}, "")) = ""`
+      );
+    }
+  }
+
+  for (const tableName of childFormTablesWithHouseholdCnicFks) {
+    for (const columnName of ["respondent_cnic", "head_cnic"]) {
+      await connection.query(
+        `UPDATE ${escapeSqlIdentifier(tableName)} child
+         LEFT JOIN ${escapeSqlIdentifier(tableNames.household)} parent
+           ON child.${escapeSqlIdentifier(columnName)} = parent.${escapeSqlIdentifier(columnName)}
+         SET child.${escapeSqlIdentifier(columnName)} = NULL
+         WHERE child.${escapeSqlIdentifier(columnName)} IS NOT NULL
+           AND parent.household_id IS NULL`
+      );
+    }
+  }
+};
+
+const ensureHouseholdCnicForeignKeys = async (connection) => {
+  for (const tableName of [tableNames.household, ...childFormTablesWithHouseholdCnicFks]) {
+    await ensureColumnType(connection, tableName, "respondent_cnic", "VARCHAR(32) NULL");
+    await ensureColumnType(connection, tableName, "head_cnic", "VARCHAR(32) NULL");
+  }
+
+  await normalizeCnicReferences(connection);
+
+  await ensureIndex(connection, tableNames.household, "idx_household_info_respondent_cnic", "respondent_cnic");
+  await ensureIndex(connection, tableNames.household, "idx_household_info_head_cnic", "head_cnic");
+
+  for (const tableName of childFormTablesWithHouseholdCnicFks) {
+    await ensureIndex(connection, tableName, `idx_${tableName}_respondent_cnic`, "respondent_cnic");
+    await ensureIndex(connection, tableName, `idx_${tableName}_head_cnic`, "head_cnic");
+    await ensureForeignKey(connection, tableName, `fk_${tableName}_respondent_cnic`, "respondent_cnic", "respondent_cnic");
+    await ensureForeignKey(connection, tableName, `fk_${tableName}_head_cnic`, "head_cnic", "head_cnic");
+  }
 };
 
 const ensureDynamicColumns = async (connection, tableName, rowData = {}) => {
@@ -518,6 +694,7 @@ const expandNestedTableData = (rowData = {}) => ({
 
 const upsertDynamicRow = async (connection, tableName, householdId, rowData = {}, payload = {}, extraData = {}) => {
   const normalizedRow = toColumnMap(buildStoredRowData(rowData, payload, extraData));
+  normalizeNullableForeignKeyCells(normalizedRow);
   delete normalizedRow.household_id;
 
   if (!tableStoresRawPayload(tableName)) {

@@ -204,12 +204,10 @@ const getSelectedHouseholdIdentity = () => {
   const selectedHouseholdName = selectedHouseholdNameInput?.value?.trim?.() || selectedHousehold.headName || "";
   const respondentCnic = selectedHousehold.respondentCnic || "";
   const headCnic = selectedHousehold.headCnic || "";
-  const cnic = respondentCnic || headCnic || "";
 
   return {
     household_id: householdId,
     selected_household_name: selectedHouseholdName,
-    cnic,
     respondent_cnic: respondentCnic,
     head_cnic: headCnic,
   };
@@ -312,6 +310,8 @@ const hydrateHouseholdRecordFromBackend = async (householdId) => {
         householdId,
         headName: record.headName || readSelectedHousehold()?.headName || "",
         city: record.city || readSelectedHousehold()?.city || "",
+        respondentCnic: record.respondentCnic || readSelectedHousehold()?.respondentCnic || "",
+        headCnic: record.headCnic || readSelectedHousehold()?.headCnic || "",
       });
       return record;
     }
@@ -795,11 +795,8 @@ const getHouseholdInfoTableRow = ({
   respondentGender,
   respondentAge,
 }) => {
-  const cnic = respondentCnic || householdHeadCnic || "";
-
   return {
     household_id: householdId || "",
-    cnic,
     respondent_cnic: respondentCnic || "",
     head_cnic: householdHeadCnic || "",
     survey_date: surveyDate || "",
@@ -1823,34 +1820,140 @@ if (inventoryForm) {
 
   void applyInventorySubmission();
 
+  const getInventoryRowSpecification = (row) => {
+    if (!row) {
+      return "";
+    }
+
+    const specSelect = row.querySelector("[data-inventory-spec-select]");
+    if (specSelect) {
+      return specSelect.value || "";
+    }
+
+    return row.dataset.requiredSpec || row.querySelector(".inventory-row__requirement")?.textContent.trim() || "";
+  };
+
+  const getInventoryRowQuantity = (row) => {
+    if (!row) {
+      return "";
+    }
+
+    const quantityInput = row.querySelector("[data-inventory-quantity]");
+    if (quantityInput) {
+      return quantityInput.value || "";
+    }
+
+    return row.dataset.requiredQuantity || "";
+  };
+
+  const collectInventoryItems = () =>
+    getInventoryRows()
+      .map((row) => {
+        const name = getInventoryRowItemName(row);
+        if (!name) {
+          return null;
+        }
+
+        return {
+          name,
+          specification: getInventoryRowSpecification(row),
+          quantity: getInventoryRowQuantity(row),
+          isCustom: row.dataset.inventoryRowType === "custom",
+          isLocked: isLockedInventoryRow(row),
+        };
+      })
+      .filter(Boolean);
+
+  const getInventoryTableKey = (itemName) => {
+    const normalizedName = inventoryItemAliases[itemName] || itemName;
+    const keyMap = {
+      "PVC Pipes": "pvc_pipes",
+      "Coupling Socket": "coupling_socket",
+      "Elbow 90 degree": "elbow_90_degree",
+      "Elbow 45 degree": "elbow_45_degree",
+      "Equal Tee / Plain Tee": "equal_tee_plain_tee",
+      "Clean-out Plug": "clean_out_plug",
+      "End Cap": "end_cap",
+      "Clamps": "clamps",
+      "PPR Plugs": "ppr_plug",
+      "Thread sealant for GI Pipes and Fittings": "thread_sealant_for_gi_pipes_and_fittings",
+      "Ash clay bricks": "ash_clay_bricks",
+      "Pallets": "pallets",
+      "Reducer Socket (Centric / straight / Plain)": "reducer_socket_centric_straight_plain",
+      "Reducer Socket (Eccentric)": "reducer_socket_eccentric",
+      "Steel nails": "steel_nails_2",
+      "Screws": "screws",
+      "Plumber's thread": "plumbers_thread",
+      "Plumber's tape / Teflon tape": "plumbers_tape_teflon_tape",
+      "Pump nozel": "pump_nozel",
+      "Bib cock": "bib_cock",
+      "Rawal Plug": "rawal_plug",
+    };
+
+    return keyMap[itemName] || keyMap[normalizedName] || slugifySubmissionKey(itemName);
+  };
+
+  const buildInventoryTableRowFromItems = ({ items, catchmentArea, recommendedTank, selectedTankSize, palletSpec }) => {
+    const otherItems = items.filter((item) => item.isCustom);
+    const row = {
+      ...getSelectedHouseholdIdentity(),
+      catchment_area_from_engineering: catchmentArea || "",
+      recommended_tank: recommendedTank || "",
+      selected_tank_size_liters: selectedTankSize || "",
+      pallet_spec_for_selected_tank: palletSpec || "",
+      other_items_count: String(otherItems.length),
+      other_items_json: JSON.stringify(otherItems),
+    };
+
+    items
+      .filter((item) => !item.isCustom)
+      .forEach((item) => {
+        if (item.name === "Water Tank") {
+          row.water_tank_size_liters = selectedTankSize || item.specification || "";
+          row.water_tank_quantity = item.quantity || "";
+          return;
+        }
+
+        const key = getInventoryTableKey(item.name);
+        if (item.specification && item.specification !== "As per requirement") {
+          row[`${key}_specification`] = item.specification;
+        }
+        row[`${key}_quantity`] = item.quantity || "";
+      });
+
+    otherItems.slice(0, 10).forEach((item, index) => {
+      row[`other_item_${index + 1}_name`] = item.name || "";
+      row[`other_item_${index + 1}_quantity`] = item.quantity || "";
+    });
+
+    return row;
+  };
+
   const collectInventorySubmissionPayload = () => {
-    const otherItems = inventoryOtherItemsList
-      ? Array.from(inventoryOtherItemsList.querySelectorAll(".inventory-question-card")).map((card) => {
-          const nameInput = card.querySelector("input[type='text']");
-          const quantityInput = card.querySelector("[data-inventory-quantity]");
-          return {
-            name: nameInput?.value.trim() || "",
-            quantity: quantityInput?.value || "",
-          };
-        })
-      : [];
+    const items = collectInventoryItems();
+    const otherItems = items.filter((item) => item.isCustom);
+    const catchmentArea = inventoryCatchmentAreaInput?.value || "";
+    const recommendedTank = inventoryRecommendedTankInput?.value || "";
+    const selectedTankSize = inventoryWaterTankSelect?.value || "";
+    const palletSpec = inventoryPalletSpecSelect?.value || "";
 
     return {
       formState: serializeFormState(inventoryForm, {
         otherItemsCount: otherItems.length,
       }),
-      catchmentArea: inventoryCatchmentAreaInput?.value || "",
-      recommendedTank: inventoryRecommendedTankInput?.value || "",
-      selectedTankSize: inventoryWaterTankSelect?.value || "",
-      palletSpec: inventoryPalletSpecInput?.value || "",
-      quantities: Array.from(inventoryQuantityInputs).map((input) => ({
+      catchmentArea,
+      recommendedTank,
+      selectedTankSize,
+      palletSpec,
+      quantities: getInventoryQuantityInputs().map((input) => ({
         value: input.value,
         defaultValue: input.dataset.defaultQuantity || "",
       })),
       specs: getInventorySpecSelectInputs().map((select) => select.value),
+      items,
       otherItems,
-      tableRow: getInventoryTableRow({
-        form: inventoryForm,
+      tableRow: buildInventoryTableRowFromItems({
+        items,
         catchmentArea,
         recommendedTank,
         selectedTankSize,
@@ -3111,7 +3214,8 @@ if (householdForm) {
 
   const getEligibilityResult = () => {
     const catchmentArea = catchmentAreaInput ? catchmentAreaInput.value : "";
-    const isEligible = catchmentArea === "Yes";
+    const tankSpace = tankSpaceSelect ? tankSpaceSelect.value : "";
+    const isEligible = catchmentArea === "Yes" && tankSpace === "Yes";
 
     return {
       isEligible,
@@ -3223,6 +3327,7 @@ if (householdForm) {
         }
 
         saveHouseholdAssessmentRecord("failed");
+        removeEligibleHousehold(householdIdInput?.value.trim() || "");
         if (feedback) {
           feedback.textContent = eligibilityResult.message;
           feedback.classList.add("form-feedback-error");
@@ -3296,6 +3401,7 @@ if (householdForm) {
         } catch (error) {
           // Keep the local save and continue to show the eligibility result.
         }
+        removeEligibleHousehold(householdIdInput?.value.trim() || "");
         if (feedback) {
           feedback.textContent = eligibilityResult.message;
           feedback.classList.add("form-feedback-error");

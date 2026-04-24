@@ -46,15 +46,6 @@ You can also inspect a combined snapshot through:
 - `GET /api/export?dataset=inventory&format=csv`
 - `GET /api/export?dataset=snapshot&format=json`
 
-For Excel-ready MySQL rows without raw JSON columns, query the generated simple views:
-
-```sql
-SELECT * FROM household_info_simple;
-SELECT * FROM socio_simple;
-SELECT * FROM engineering_simple;
-SELECT * FROM inventory_simple;
-```
-
 Supported export datasets:
 
 - `households`
