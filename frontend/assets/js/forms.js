@@ -1277,11 +1277,324 @@ const inventoryCatchmentAreaInput = document.querySelector("[data-inventory-catc
 const inventoryRecommendedTankInput = document.querySelector("[data-inventory-recommended-tank]");
 const inventoryFeedback = document.querySelector("[data-inventory-feedback]");
 const inventoryWaterTankSelect = document.querySelector("[data-inventory-water-tank-select]");
-const inventoryPalletSpecInput = document.querySelector("[data-inventory-pallet-spec]");
+const inventoryPalletSpecSelect = document.querySelector("[data-inventory-pallet-spec-select]");
 const inventoryAddOtherItemButton = document.querySelector("[data-add-other-item]");
-const inventoryOtherItemsList = document.querySelector("[data-other-items-list]");
-const inventoryQuantityInputs = Array.from(document.querySelectorAll("[data-inventory-quantity]"));
-const inventorySelectInputs = Array.from(document.querySelectorAll("[data-inventory-select]"));
+const inventoryRowsBody = document.querySelector("[data-inventory-rows]");
+const lockedInventoryItemNames = new Set([
+  "Rawal Plug",
+  "Bib cock",
+  "Pump nozel",
+  "Plumber's tape / Teflon tape",
+  "Plumber's thread",
+  "Screws",
+  "Ash clay bricks",
+  "Thread sealant for GI Pipes and Fittings",
+  "PPR Plugs",
+  "PVC solvent",
+]);
+
+const inventoryItemCatalog = {
+  "Water Tank(PVC)": ["750 liters", "800 liters", "1000 liters", "1200 liters", "1500 liters", "2000 liters"],
+  "Water Tank(Stainless Steel)": ["750 liters", "800 liters", "1000 liters", "1200 liters", "1500 liters", "2000 liters"],
+  "Coupling socket(Plain socket)": ["Coupling Socket 2''", "Coupling Socket 3''", "Coupling Socket 4''"],
+  "Reducer Socket (Centric/Straight/Plain)": ["Cent. Reducer Socket 2'' x 3''", "Cent. Reducer Socket 2'' x 4''", "Cent. Reducer Socket 3'' x 4''"],
+  "Reducer Socket (Eccentric)": ["Eccent. Reducer Socket 2'' x 3''", "Eccent. Reducer Socket 2'' x 4''", "Eccent. Reducer Socket 3'' x 4''"],
+  "Eccentric Reducer Coupling Socket": ["Eccent. Reducer Coupling 2'' x 3''", "Eccent. Reducer Coupling 2'' x 4''", "Eccent. Reducer Coupling 3'' x 4''"],
+  "Elbow 90 Degree (Plain)": ["90 Degree Elbow 2''", "90 Degree Elbow 3''", "90 Degree Elbow 4''"],
+  "Reducer Elbow 90 Degree": ["90 Degree Reducer Elbow 2'' x 3''", "90 Degree Reducer Elbow 2'' x 4''", "90 Degree Reducer Elbow 3'' x 4''"],
+  "Elbow 90 Degree with clean out plug": ["90 Degree Elbow 2'' (with plug)", "90 Degree Elbow 3'' (with plug)", "90 Degree Elbow 4'' (with plug)"],
+  "Elbow 45 Degree (plain)": ["45 Degree Elbow 2''", "45 Degree Elbow 3''", "45 Degree Elbow 4''"],
+  "Reducer elbow 45 Degree": ["45 Degree Reducer Elbow 2'' x 3''", "45 Degree Reducer Elbow 2'' x 4''", "45 Degree Reducer Elbow 3'' x 4''"],
+  "Elbow 45 Degree with clean out plug": ["45 Degree Elbow 2'' (with plug)", "45 Degree Elbow 3'' (with plug)", "45 Degree Elbow 4'' (with plug)"],
+  "Equal Tee/ Plain Tee": ["Tee 2''", "Tee 3''", "Tee 4''"],
+  "Reducer Tee": ["Reducer Tee 2'' x 3''", "Reducer Tee 2'' x 4''", "Reducer Tee 3'' x 4''"],
+  "Equal Tee with back port/clean out plug": ["Tee 2'' (with back plug)", "Tee 3'' (with back plug)", "Tee 4'' (with back plug)"],
+  "Equal Tee with side port/clean out plug": ["Tee 2'' (with side plug)", "Tee 3'' (with side plug)", "Tee 4'' (with side plug)"],
+  "45 Degree Skew Tee/Y-Tee/Yee": ["45 Degree Y-Tee 2''", "45 Degree Y-Tee 3''", "45 Degree Y-Tee 4''"],
+  "45 Degree Reducer Tee/Y-Tee/Yee": ["45 Degree Reducer Tee 2'' x 3''", "45 Degree Reducer Tee 2'' x 4''", "45 Degree Reducer Tee 3'' x 4''"],
+  "Plain Cross/Cross Tee": ["Plain Cross 2''", "Plain Cross 3''", "Plain Cross 4''"],
+  "Reducer Cross": ["Reducer Cross 2'' x 3''", "Reducer Cross 2'' x 4''", "Reducer Cross 3'' x 4''"],
+  "Y-Cross Double Branch": ["Y Cross 2''", "Y Cross 3''", "Y Cross 4''"],
+  "Clean-out Plug": ["Clean-out 2''", "Clean-out 3''", "Clean-out 4''"],
+  "Floor Drain": ["Floor Drain 6'' x 3''", "Floor Drain 6'' x 4''"],
+  "Roof Drain": ["Roof Drain 6'' x 3''", "Roof Drain 6'' x 4''"],
+  "End Cap": ["End cap 2''", "End cap 3''", "End cap 4''"],
+  "PVC Pipes": ["2'' (SCH-40)", "2'' (SDR-41) (B-Class)", "2'' (SDR-26) (D-Class)", "3'' (SCH-40)", "3'' (SDR-41)(B-Class)", "3\"(SDR-26)(D-Class)", "4\" (SCH - 40)", "4'' (SDR-41)(B-Class)", "4\" (SDR-26)(D-Class)"],
+  "Clamps for PVC Pipes": ["Clamp 2\"", "Clamp 3\"", "Clamp 4\"", "Clamp 6\""],
+  "PVC Solvent Cement/Glue": ["Solvent 75 gram Pack", "Solvent 125 gram Pack", "Solvent 250 gram Pack", "Solvent 500 gram Pack", "Solvent 1000 gram Pack"],
+  "Pallets": ["Pallet 39\" * 47\"", "Pallet 47\" * 47\""],
+  "Thread sealant for GI Pipes and fittings": ["NA"],
+  "Steel hooks": ["NA"],
+  "Steel Nails": ["NA"],
+  "Plumber's thread": ["NA"],
+  "Plumber's tape/Teflon tape": ["NA"],
+  "Ash clay bricks": ["NA"],
+  "HH plate": ["NA"],
+  "User guidelines": ["NA"],
+  "GI Fittings": ["NA"],
+  "Distribution box with power sockets": ["16 gauge waterproof"],
+  "Electric water cooler": ["NA"],
+  "Cement-sand mortar and plastered brick platforms": ["47\" * 47\" * 24\""],
+  "PPR Plugs": ["NA"],
+  "PVC solvent": ["NA"],
+};
+
+const inventoryItemAliases = {
+  "Water Tank": "Water Tank(PVC)",
+  "PVC solvent": "PVC Solvent Cement/Glue",
+  "Coupling Socket": "Coupling socket(Plain socket)",
+  "Reducer Socket (Centric / straight / Plain)": "Reducer Socket (Centric/Straight/Plain)",
+  "Equal Tee / Plain Tee": "Equal Tee/ Plain Tee",
+  "Elbow 90 degree": "Elbow 90 Degree (Plain)",
+  "Elbow 45 degree": "Elbow 45 Degree (plain)",
+  "Clamps": "Clamps for PVC Pipes",
+  "Plumbers thread": "Plumber's thread",
+  "Plumbers tape / Teflon tape": "Plumber's tape/Teflon tape",
+  "Thread sealant for GI Pipes and fittings": "Thread sealant for GI Pipes and fittings",
+  "Steel nails": "Steel Nails",
+};
+
+const inventoryItemNames = Object.keys(inventoryItemCatalog);
+
+const getInventoryRows = () => {
+  if (!inventoryRowsBody) {
+    return [];
+  }
+
+  return Array.from(inventoryRowsBody.querySelectorAll("[data-inventory-row]"));
+};
+
+const getInventoryQuantityInputs = () => {
+  if (!inventoryForm) {
+    return [];
+  }
+
+  return Array.from(inventoryForm.querySelectorAll("[data-inventory-quantity]"));
+};
+
+const getInventorySpecSelectInputs = () => {
+  if (!inventoryForm) {
+    return [];
+  }
+
+  return Array.from(inventoryForm.querySelectorAll("[data-inventory-spec-select]"));
+};
+
+const getInventoryItemSelectInputs = () => {
+  if (!inventoryForm) {
+    return [];
+  }
+
+  return Array.from(inventoryForm.querySelectorAll("[data-inventory-item-select]"));
+};
+
+const getInventorySpecOptionsForItem = (itemName) => {
+  return inventoryItemCatalog[itemName] || ["NA"];
+};
+
+const createInventoryItemSelect = (value) => {
+  const select = document.createElement("select");
+  select.dataset.inventoryItemSelect = "true";
+  select.dataset.inventoryBound = "true";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select item";
+  placeholder.disabled = true;
+  placeholder.hidden = true;
+  placeholder.selected = !value;
+  select.append(placeholder);
+
+  inventoryItemNames.forEach((itemName) => {
+    const option = document.createElement("option");
+    option.value = itemName;
+    option.textContent = itemName;
+    select.append(option);
+  });
+
+  select.value = inventoryItemNames.includes(value) ? value : "";
+  return select;
+};
+
+const populateInventorySpecSelect = (row, itemName) => {
+  const specSelect = row?.querySelector("[data-inventory-spec-select]");
+  if (!specSelect) {
+    return;
+  }
+
+  const specOptions = getInventorySpecOptionsForItem(itemName);
+  const currentValue = specSelect.value;
+  specSelect.innerHTML = "";
+
+  specOptions.forEach((spec) => {
+    const option = document.createElement("option");
+    option.value = spec;
+    option.textContent = spec;
+    specSelect.append(option);
+  });
+
+  if (specOptions.includes(currentValue)) {
+    specSelect.value = currentValue;
+  } else if (specOptions.length > 0) {
+    specSelect.value = specOptions[0];
+  }
+};
+
+const syncInventoryCustomRow = (row) => {
+  if (!row || row.dataset.inventoryRowType !== "custom") {
+    return;
+  }
+
+  const itemCell = row.children[0];
+  const currentItemName = row.dataset.itemName || "";
+  let itemSelect = row.querySelector("[data-inventory-item-select]");
+
+  if (!itemSelect && itemCell) {
+    itemSelect = createInventoryItemSelect(currentItemName);
+    itemCell.textContent = "";
+    itemCell.append(itemSelect);
+  } else if (itemSelect && currentItemName) {
+    itemSelect.value = currentItemName;
+  }
+
+  if (!itemSelect) {
+    return;
+  }
+
+  const applyCurrentItem = () => {
+    const selectedItem = itemSelect.value || "";
+    row.dataset.itemName = selectedItem;
+    populateInventorySpecSelect(row, selectedItem);
+  };
+
+  if (!itemSelect.dataset.inventoryBoundAttached) {
+    itemSelect.addEventListener("change", applyCurrentItem);
+    itemSelect.dataset.inventoryBoundAttached = "true";
+  }
+
+  applyCurrentItem();
+};
+
+const clearInventoryCustomRows = () => {
+  if (!inventoryRowsBody) {
+    return;
+  }
+
+  getInventoryRows()
+    .filter((row) => row.dataset.inventoryRowType === "custom")
+    .forEach((row) => row.remove());
+};
+
+const restoreInventoryRowsFromItems = (items = []) => {
+  if (!Array.isArray(items) || !inventoryRowsBody) {
+    return false;
+  }
+
+  const customItems = items.filter((item) => item?.isCustom);
+
+  clearInventoryCustomRows();
+
+  customItems.forEach((item) => {
+    addInventoryOtherItemRow();
+    const customRows = Array.from(inventoryRowsBody.querySelectorAll("[data-inventory-row-type='custom']"));
+    const row = customRows[customRows.length - 1];
+    if (!row) {
+      return;
+    }
+
+    const nameSelect = row.querySelector("[data-inventory-item-select]");
+    const specSelect = row.querySelector("[data-inventory-spec-select]");
+    const quantityInput = row.querySelector("[data-inventory-quantity]");
+
+    if (nameSelect && item.name) {
+      nameSelect.value = item.name;
+    }
+
+    syncInventoryCustomRow(row);
+
+    if (specSelect && item.specification) {
+      specSelect.value = item.specification;
+    }
+
+    if (quantityInput && item.quantity !== undefined) {
+      quantityInput.value = item.quantity;
+    }
+  });
+
+  return true;
+};
+
+const syncInventoryPalletSpec = () => {
+  if (!inventoryPalletSpecSelect) {
+    return;
+  }
+
+  inventoryPalletSpecSelect.value = getPalletSpecForTank(inventoryWaterTankSelect?.value || "");
+};
+
+const getInventoryRowItemName = (row) => {
+  if (!row) {
+    return "";
+  }
+
+  const itemSelect = row.querySelector("[data-inventory-item-select]");
+  if (itemSelect) {
+    return itemSelect.value.trim();
+  }
+
+  return (
+    row.dataset.itemName ||
+    row.querySelector(".inventory-table__item-name")?.textContent?.replace(/\s+As per requirement\s*$/i, "").trim() ||
+    ""
+  );
+};
+
+const isLockedInventoryRow = (row) => {
+  const itemName = getInventoryRowItemName(row);
+  if (!itemName) {
+    return false;
+  }
+
+  if (row.dataset.inventoryRowType === "locked") {
+    return true;
+  }
+
+  if (itemName.startsWith("Steel nails")) {
+    return true;
+  }
+
+  return lockedInventoryItemNames.has(itemName);
+};
+
+const syncInventoryRowLockState = () => {
+  if (!inventoryRowsBody) {
+    return;
+  }
+
+  const rows = getInventoryRows();
+  const lockedRows = rows.filter((row) => isLockedInventoryRow(row) || row.dataset.inventoryRowType === "locked");
+  lockedRows.forEach((row) => {
+    inventoryRowsBody.append(row);
+  });
+
+  getInventoryRows().forEach((row) => {
+    const locked = isLockedInventoryRow(row);
+    row.classList.toggle("inventory-row--locked", locked);
+    row.dataset.inventoryRowState = locked ? "locked" : "editable";
+
+    if (row.dataset.inventoryRowType === "custom") {
+      syncInventoryCustomRow(row);
+    }
+
+    row.querySelectorAll("input, select, textarea").forEach((control) => {
+      if (control.type === "button" || control.matches("[data-remove-inventory-row]") || control.matches("[data-inventory-item-select]")) {
+        return;
+      }
+
+      control.disabled = locked;
+    });
+  });
+};
 
 const syncSelectedHouseholdFields = (selectedHousehold) => {
   if (!selectedHousehold || typeof selectedHousehold !== "object") {
@@ -1322,31 +1635,64 @@ if (inventoryForm) {
   const inventorySubmitButton = document.querySelector("[data-inventory-submit]");
   let otherItemCount = 0;
 
-  const createOtherItemCard = () => {
+  const createOtherItemRow = () => {
     otherItemCount += 1;
-    const card = document.createElement("section");
-    card.className = "inventory-question-card";
-    card.innerHTML = `
-      <h4 class="inventory-other-item-title">Other item ${otherItemCount}</h4>
-      <label class="field">
-        <span>Item name</span>
-        <input type="text" placeholder="Enter item name">
-      </label>
-      <label class="field">
-        <span>Quantity</span>
+    const row = document.createElement("tr");
+    row.className = "inventory-row inventory-row--custom";
+    row.dataset.inventoryRow = "true";
+    row.dataset.inventoryRowType = "custom";
+    row.innerHTML = `
+      <td>
+        <div class="inventory-row__item-field">
+          <select data-inventory-item-select></select>
+          <button class="button button-inline button-remove inventory-row__remove" type="button" data-remove-inventory-row aria-label="Remove custom item">
+            Remove
+          </button>
+        </div>
+      </td>
+      <td>
+        <select data-inventory-spec-select>
+          <option selected>NA</option>
+        </select>
+      </td>
+      <td>
         <input type="number" min="0" step="1" value="1" data-inventory-quantity data-default-quantity="1">
-      </label>
+      </td>
     `;
-    return card;
+    const itemSelect = row.querySelector("[data-inventory-item-select]");
+    if (itemSelect) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Select item";
+      placeholder.disabled = true;
+      placeholder.hidden = true;
+      placeholder.selected = true;
+      itemSelect.append(placeholder);
+
+      inventoryItemNames.forEach((itemName) => {
+        const option = document.createElement("option");
+        option.value = itemName;
+        option.textContent = itemName;
+        itemSelect.append(option);
+      });
+    }
+    syncInventoryCustomRow(row);
+    return row;
   };
 
-  const addInventoryOtherItemCard = () => {
-    if (!inventoryOtherItemsList) {
+  const addInventoryOtherItemRow = () => {
+    if (!inventoryRowsBody) {
       return;
     }
 
-    inventoryOtherItemsList.hidden = false;
-    inventoryOtherItemsList.append(createOtherItemCard());
+    const nextLockedRow = inventoryRowsBody.querySelector("[data-inventory-row-type='locked']");
+    const row = createOtherItemRow();
+    if (nextLockedRow) {
+      inventoryRowsBody.insertBefore(row, nextLockedRow);
+      return;
+    }
+
+    inventoryRowsBody.append(row);
   };
 
   const applyInventoryDefaults = async () => {
@@ -1368,19 +1714,15 @@ if (inventoryForm) {
       }
     }
 
-    const selectedTankSize = inventoryWaterTankSelect ? inventoryWaterTankSelect.value : recommendedTankSize;
+    syncInventoryPalletSpec();
 
-    if (inventoryPalletSpecInput) {
-      inventoryPalletSpecInput.value = getPalletSpecForTank(selectedTankSize);
-    }
-
-    inventoryQuantityInputs.forEach((input) => {
+    getInventoryQuantityInputs().forEach((input) => {
       if (!input.value) {
         input.value = input.dataset.defaultQuantity || "1";
       }
     });
 
-    inventorySelectInputs.forEach((select) => {
+    getInventorySpecSelectInputs().forEach((select) => {
       if (!select.value && select.options.length > 0) {
         select.selectedIndex = 0;
       }
@@ -1399,19 +1741,32 @@ if (inventoryForm) {
     }
   };
 
+  syncInventoryRowLockState();
   void applyInventoryDefaults();
 
   if (inventoryWaterTankSelect) {
     inventoryWaterTankSelect.addEventListener("change", () => {
-      if (inventoryPalletSpecInput) {
-        inventoryPalletSpecInput.value = getPalletSpecForTank(inventoryWaterTankSelect.value);
-      }
+      syncInventoryPalletSpec();
     });
   }
 
-  if (inventoryAddOtherItemButton && inventoryOtherItemsList) {
+  if (inventoryAddOtherItemButton && inventoryRowsBody) {
     inventoryAddOtherItemButton.addEventListener("click", () => {
-      addInventoryOtherItemCard();
+      addInventoryOtherItemRow();
+    });
+  }
+
+  if (inventoryRowsBody) {
+    inventoryRowsBody.addEventListener("click", (event) => {
+      const removeButton = event.target.closest("[data-remove-inventory-row]");
+      if (!removeButton) {
+        return;
+      }
+
+      const row = removeButton.closest("[data-inventory-row]");
+      if (row && row.dataset.inventoryRowType === "custom") {
+        row.remove();
+      }
     });
   }
 
@@ -1426,12 +1781,28 @@ if (inventoryForm) {
       return;
     }
 
-    const otherItemsCount = inventoryPayload.formState?.meta?.otherItemsCount || 0;
-    while ((inventoryOtherItemsList?.querySelectorAll(".inventory-question-card").length || 0) < otherItemsCount) {
-      addInventoryOtherItemCard();
+    const storedCustomItems = Array.isArray(inventoryPayload.items)
+      ? inventoryPayload.items.filter((item) => item?.isCustom).length
+      : 0;
+    const otherItemsCount = inventoryPayload.formState?.meta?.otherItemsCount || storedCustomItems || inventoryPayload.otherItems?.length || 0;
+
+    while ((inventoryRowsBody?.querySelectorAll("[data-inventory-row-type='custom']").length || 0) < otherItemsCount) {
+      addInventoryOtherItemRow();
     }
 
-    restoreFormState(inventoryForm, inventoryPayload.formState);
+    const hasStructuredInventoryItems = Array.isArray(inventoryPayload.items) && inventoryPayload.items.length > 0;
+    if (hasStructuredInventoryItems) {
+      restoreInventoryRowsFromItems(inventoryPayload.items);
+    } else {
+      restoreFormState(inventoryForm, inventoryPayload.formState);
+      getInventoryRows().forEach((row) => {
+        if (row.dataset.inventoryRowType === "custom") {
+          syncInventoryCustomRow(row);
+        }
+      });
+    }
+
+    syncInventoryRowLockState();
 
     if (inventoryCatchmentAreaInput && inventoryPayload.catchmentArea) {
       inventoryCatchmentAreaInput.value = inventoryPayload.catchmentArea;
@@ -1445,8 +1816,8 @@ if (inventoryForm) {
       inventoryWaterTankSelect.value = inventoryPayload.selectedTankSize;
     }
 
-    if (inventoryPalletSpecInput) {
-      inventoryPalletSpecInput.value = inventoryPayload.palletSpec || getPalletSpecForTank(inventoryWaterTankSelect?.value || "");
+    if (inventoryPalletSpecSelect) {
+      inventoryPalletSpecSelect.value = inventoryPayload.palletSpec || getPalletSpecForTank(inventoryWaterTankSelect?.value || "");
     }
   };
 
@@ -1463,24 +1834,20 @@ if (inventoryForm) {
           };
         })
       : [];
-    const catchmentArea = inventoryCatchmentAreaInput?.value || "";
-    const recommendedTank = inventoryRecommendedTankInput?.value || "";
-    const selectedTankSize = inventoryWaterTankSelect?.value || "";
-    const palletSpec = inventoryPalletSpecInput?.value || "";
 
     return {
       formState: serializeFormState(inventoryForm, {
         otherItemsCount: otherItems.length,
       }),
-      catchmentArea,
-      recommendedTank,
-      selectedTankSize,
-      palletSpec,
+      catchmentArea: inventoryCatchmentAreaInput?.value || "",
+      recommendedTank: inventoryRecommendedTankInput?.value || "",
+      selectedTankSize: inventoryWaterTankSelect?.value || "",
+      palletSpec: inventoryPalletSpecInput?.value || "",
       quantities: Array.from(inventoryQuantityInputs).map((input) => ({
         value: input.value,
         defaultValue: input.dataset.defaultQuantity || "",
       })),
-      specs: Array.from(inventorySelectInputs).map((select) => select.value),
+      specs: getInventorySpecSelectInputs().map((select) => select.value),
       otherItems,
       tableRow: getInventoryTableRow({
         form: inventoryForm,
