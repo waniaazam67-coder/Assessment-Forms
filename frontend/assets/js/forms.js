@@ -112,6 +112,7 @@ const enqueuePendingSync = (entry) => {
 const apiJsonRequest = async (path, options = {}) => {
   const response = await fetch(`${backendBaseUrl}${path}`, {
     method: options.method || "GET",
+    keepalive: Boolean(options.keepalive),
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {}),
@@ -150,11 +151,12 @@ const flushPendingSyncQueue = async () => {
 };
 
 const queueBackendSync = (path, body, method = "POST") => {
-  void (async () => {
+  return (async () => {
     try {
-      await apiJsonRequest(path, {
+      return await apiJsonRequest(path, {
         method,
         body: JSON.stringify(body || {}),
+        keepalive: method.toUpperCase() === "POST",
       });
     } catch (error) {
       enqueuePendingSync({
@@ -162,6 +164,7 @@ const queueBackendSync = (path, body, method = "POST") => {
         method,
         body,
       });
+      throw error;
     }
   })();
 };
@@ -683,16 +686,18 @@ const getEngineeringTableRow = ({
   Object.assign(row, getCheckboxStateRow(form.querySelectorAll("input[name='drainage-arrangement']"), "drainage_arrangement"));
   row.drainage_arrangement_other_text = form.querySelector("[data-toggle-field='drainage-other'] input")?.value || "";
 
-  Array.from(catchmentRows || []).forEach((catchmentRow, index) => {
-    const areaName = slugifySubmissionKey(catchmentRow.querySelector("td")?.textContent || `catchment_${index + 1}`);
-    row[`${areaName}_width_ft`] = catchmentRow.querySelector("[data-catchment-width]")?.value || "";
-    row[`${areaName}_length_ft`] = catchmentRow.querySelector("[data-catchment-length]")?.value || "";
-    row[`${areaName}_area_sq_ft`] = catchmentRow.querySelector("[data-catchment-area]")?.value || "";
-
-    Array.from(catchmentRow.querySelectorAll("[data-drainage-diameter]")).forEach((input, diameterIndex) => {
-      row[`${areaName}_drainage_point_${diameterIndex + 1}_diameter`] = input.value || "";
-    });
-  });
+  row.catchment_rows_json = JSON.stringify(
+    Array.from(catchmentRows || []).map((catchmentRow, index) => ({
+      areaName: catchmentRow.querySelector("td")?.textContent.trim() || `Catchment ${index + 1}`,
+      widthFt: catchmentRow.querySelector("[data-catchment-width]")?.value || "",
+      lengthFt: catchmentRow.querySelector("[data-catchment-length]")?.value || "",
+      areaSqFt: catchmentRow.querySelector("[data-catchment-area]")?.value || "",
+      drainagePoints: Array.from(catchmentRow.querySelectorAll("[data-drainage-diameter]")).map((input, diameterIndex) => ({
+        point: diameterIndex + 1,
+        diameter: input.value || "",
+      })),
+    }))
+  );
 
   ["underground", "overhead"].forEach((tankType) => {
     row[`${tankType}_tank_count`] = form.querySelector(`[data-tank-count='${tankType}']`)?.value || "";
@@ -700,13 +705,15 @@ const getEngineeringTableRow = ({
     row[`${tankType}_tank_total_capacity`] = form.querySelector(`[data-tank-total='${tankType}']`)?.value || "";
 
     const generatedRows = Array.from(form.querySelectorAll(`[data-generated-tank-row='${tankType}']`));
-    generatedRows.forEach((generatedRow, index) => {
-      const prefix = `${tankType}_tank_${index + 1}`;
-      row[`${prefix}_depth`] = generatedRow.querySelector("[data-tank-depth]")?.value || "";
-      row[`${prefix}_width`] = generatedRow.querySelector("[data-tank-width]")?.value || "";
-      row[`${prefix}_length`] = generatedRow.querySelector("[data-tank-length]")?.value || "";
-      row[`${prefix}_capacity`] = generatedRow.querySelector("[data-tank-capacity]")?.value || "";
-    });
+    row[`${tankType}_tanks_json`] = JSON.stringify(
+      generatedRows.map((generatedRow, index) => ({
+        tankNumber: index + 1,
+        depth: generatedRow.querySelector("[data-tank-depth]")?.value || "",
+        width: generatedRow.querySelector("[data-tank-width]")?.value || "",
+        length: generatedRow.querySelector("[data-tank-length]")?.value || "",
+        capacity: generatedRow.querySelector("[data-tank-capacity]")?.value || "",
+      }))
+    );
   });
 
   return row;
@@ -765,6 +772,53 @@ const getInventoryTableRow = ({
   });
 
   return row;
+};
+
+const getHouseholdInfoTableRow = ({
+  householdId,
+  surveyDate,
+  householdLocation,
+  city,
+  ucnc,
+  interviewAddress,
+  enumeratorName,
+  catchmentArea,
+  tankSpace,
+  eligibilityStatus,
+  respondentIsHouseholdHead,
+  householdHeadCnic,
+  householdHeadName,
+  relationshipToHead,
+  respondentCnic,
+  respondentName,
+  respondentPhoneNumber,
+  respondentGender,
+  respondentAge,
+}) => {
+  const cnic = respondentCnic || householdHeadCnic || "";
+
+  return {
+    household_id: householdId || "",
+    cnic,
+    respondent_cnic: respondentCnic || "",
+    head_cnic: householdHeadCnic || "",
+    survey_date: surveyDate || "",
+    household_location: householdLocation || "",
+    city: city || "",
+    ucnc: ucnc || "",
+    interview_address: interviewAddress || "",
+    enumerator_name: enumeratorName || "",
+    catchment_area: catchmentArea || "",
+    tank_space: tankSpace || "",
+    eligibility_status: eligibilityStatus || "",
+    respondent_is_household_head: respondentIsHouseholdHead || "",
+    household_head_name: householdHeadName || "",
+    relationship_to_head: relationshipToHead || "",
+    respondent_name: respondentName || "",
+    respondent_phone_number: respondentPhoneNumber || "",
+    respondent_gender: respondentGender || "",
+    respondent_age: respondentAge || "",
+  };
 };
 
 const ensureRepeatableCount = (container, template, targetCount, addItem) => {
@@ -956,7 +1010,7 @@ const writeSeafResponses = (data) => {
 
 const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", syncOptions = {}) => {
   if (!householdId) {
-    return;
+    return Promise.resolve(null);
   }
 
   const submittedForms = readSubmittedForms();
@@ -995,7 +1049,7 @@ const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", sync
     });
   }
 
-  queueBackendSync(`/api/forms/${formKey}/submit`, {
+  const syncPromise = queueBackendSync(`/api/forms/${formKey}/submit`, {
     householdId,
     headName: currentHeadName || existing.headName || "",
     status,
@@ -1006,6 +1060,8 @@ const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", sync
   if (isHouseholdFullySubmitted(submittedForms[householdId])) {
     removeEligibleHousehold(householdId);
   }
+
+  return syncPromise;
 };
 
 const populateSubmittedFormsTable = () => {
@@ -1438,7 +1494,7 @@ if (inventoryForm) {
   };
 
   if (inventorySubmitButton) {
-    inventorySubmitButton.addEventListener("click", () => {
+    inventorySubmitButton.addEventListener("click", async () => {
       const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
 
       if (!householdId) {
@@ -1451,14 +1507,22 @@ if (inventoryForm) {
       }
 
       const inventoryPayload = collectInventorySubmissionPayload();
-      setSubmittedFormStatus(householdId, "inventory", "Submitted", {
-        payload: inventoryPayload,
-        householdPatch: {
-          inventoryCatchmentArea: inventoryPayload.catchmentArea,
-          inventoryRecommendedTank: inventoryPayload.recommendedTank,
-          inventorySelectedTankSize: inventoryPayload.selectedTankSize,
-        },
-      });
+      try {
+        await setSubmittedFormStatus(householdId, "inventory", "Submitted", {
+          payload: inventoryPayload,
+          householdPatch: {
+            inventoryCatchmentArea: inventoryPayload.catchmentArea,
+            inventoryRecommendedTank: inventoryPayload.recommendedTank,
+            inventorySelectedTankSize: inventoryPayload.selectedTankSize,
+          },
+        });
+      } catch (error) {
+        if (inventoryFeedback) {
+          inventoryFeedback.textContent = "Inventory was saved locally, but the backend/database save did not complete yet.";
+          inventoryFeedback.classList.add("form-feedback-error");
+          inventoryFeedback.classList.remove("form-feedback-success");
+        }
+      }
 
       try {
         sessionStorage.setItem(postRedirectMessageKey, `The Inventory form for household ID ${householdId} is submitted successfully.`);
@@ -1672,7 +1736,7 @@ if (socioeconomicForm) {
   void applySocioeconomicDefaults();
 
   if (socioContinueButton) {
-    socioContinueButton.addEventListener("click", () => {
+    socioContinueButton.addEventListener("click", async () => {
       const activePanel = socioPanels.find((panel) => panel.classList.contains("is-active"));
       const currentStep = activePanel ? activePanel.dataset.socioPanel : socioStepOrder[0];
       const currentIndex = socioStepOrder.indexOf(currentStep);
@@ -1689,13 +1753,17 @@ if (socioeconomicForm) {
 
       const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
       const seafPayload = saveSeafResponse();
-      setSubmittedFormStatus(householdId, "seaf", "Submitted", {
-        payload: seafPayload || {},
-        householdPatch: {
-          seafFacilities: seafPayload?.facilities || [],
-          seafUtilities: seafPayload?.utilities || [],
-        },
-      });
+      try {
+        await setSubmittedFormStatus(householdId, "seaf", "Submitted", {
+          payload: seafPayload || {},
+          householdPatch: {
+            seafFacilities: seafPayload?.facilities || [],
+            seafUtilities: seafPayload?.utilities || [],
+          },
+        });
+      } catch (error) {
+        // Keep the local save and continue with the existing UX.
+      }
 
       try {
         sessionStorage.setItem(postRedirectMessageKey, "The SEAF is submitted successfully.");
@@ -2139,7 +2207,7 @@ if (engineeringForm) {
     void applyEngineeringDefaults();
 
   if (engineeringSubmitButton) {
-    engineeringSubmitButton.addEventListener("click", () => {
+    engineeringSubmitButton.addEventListener("click", async () => {
       if (!hasAtLeastOneCatchmentRow()) {
         if (engineeringFeedback) {
           engineeringFeedback.textContent = "Please fill at least one catchment area row before submitting the engineering form.";
@@ -2198,25 +2266,29 @@ if (engineeringForm) {
         }),
       };
 
-      setSubmittedFormStatus(householdId, "engineering", "Submitted", {
-        payload: engineeringPayload,
-        householdPatch: {
-          engineerName,
-          housingWidth: engineeringPayload.housingWidth,
-          housingDepth: engineeringPayload.housingDepth,
-          housingArea: engineeringPayload.housingArea,
-          catchmentRows: engineeringPayload.catchmentRows,
-          engineeringCatchmentArea: catchmentTotalArea,
-          engineeringCatchmentTotalArea: catchmentTotalArea,
-          waterNeedArea: engineeringPayload.waterNeedArea,
-          waterNeedSpace: engineeringPayload.waterNeedSpace,
-          waterNeedQuantity: engineeringPayload.waterNeedQuantity,
-          waterNeedHouseholdSize: engineeringPayload.waterNeedHouseholdSize,
-          waterNeedDaily: engineeringPayload.waterNeedDaily,
-          engineeringTankSpace: engineeringPayload.engineeringTankSpace,
-          proposedStorageCapacity: engineeringPayload.proposedStorageCapacity,
-        },
-      });
+      try {
+        await setSubmittedFormStatus(householdId, "engineering", "Submitted", {
+          payload: engineeringPayload,
+          householdPatch: {
+            engineerName,
+            housingWidth: engineeringPayload.housingWidth,
+            housingDepth: engineeringPayload.housingDepth,
+            housingArea: engineeringPayload.housingArea,
+            catchmentRows: engineeringPayload.catchmentRows,
+            engineeringCatchmentArea: catchmentTotalArea,
+            engineeringCatchmentTotalArea: catchmentTotalArea,
+            waterNeedArea: engineeringPayload.waterNeedArea,
+            waterNeedSpace: engineeringPayload.waterNeedSpace,
+            waterNeedQuantity: engineeringPayload.waterNeedQuantity,
+            waterNeedHouseholdSize: engineeringPayload.waterNeedHouseholdSize,
+            waterNeedDaily: engineeringPayload.waterNeedDaily,
+            engineeringTankSpace: engineeringPayload.engineeringTankSpace,
+            proposedStorageCapacity: engineeringPayload.proposedStorageCapacity,
+          },
+        });
+      } catch (error) {
+        // Keep the local save and continue with the existing UX.
+      }
 
       try {
         sessionStorage.setItem(postRedirectMessageKey, "The Engineering form is submitted successfully.");
@@ -2239,6 +2311,7 @@ if (householdForm) {
   const inlineEligibilityMessage = document.querySelector("[data-eligibility-inline-message]");
   const householdIdInput = document.querySelector("[data-household-id]");
   const surveyDateInput = document.querySelector("[data-survey-date]");
+  const householdLocationInput = document.querySelector("[data-household-location]");
   const enumeratorSelect = document.querySelector("[data-enumerator-select]");
   const citySelect = document.querySelector("[data-city-select]");
   const ucncSelect = document.querySelector("[data-ucnc-select]");
@@ -2258,6 +2331,7 @@ if (householdForm) {
   const headNameInput = document.querySelector("[data-head-name]");
   const respondantCnicInput = document.querySelector("[data-respondant-cnic]");
   const respondantNameInput = document.querySelector("[data-respondant-name]");
+  const respondantAgeInput = document.querySelector("[data-respondant-age]");
 
   const generatedIdsStorageKey = "shehersaaz-generated-household-ids";
   const interviewAreas = {
@@ -2276,7 +2350,9 @@ if (householdForm) {
   let toastTimeoutId;
 
   const getHouseholdAssessmentSnapshot = (eligibilityStatus = "") => {
+    const householdId = householdIdInput?.value.trim() || "";
     const surveyDate = surveyDateInput?.value || "";
+    const householdLocation = householdLocationInput?.value.trim() || "";
     const city = citySelect?.value || "";
     const ucnc = ucncSelect?.value || "";
     const address = interviewAddressInput?.value.trim() || "";
@@ -2290,21 +2366,53 @@ if (householdForm) {
     const respondentCnic = respondantCnicInput?.value.trim() || "";
     const headCnic = headCnicInput?.value.trim() || "";
     const respondentGender = respondantGenderInput?.value || "";
+    const respondentPhoneNumber = respondantPhoneInput?.value.trim() || "";
+    const respondentAge = respondantAgeInput?.value || "";
+    const respondentIsHouseholdHead = respondantHeadSelect?.value || "";
+    const relationshipToHead = relationshipToHeadInput?.value || "";
+    const tableRow = getHouseholdInfoTableRow({
+      householdId,
+      surveyDate,
+      householdLocation,
+      city,
+      ucnc,
+      interviewAddress: address,
+      enumeratorName,
+      catchmentArea,
+      tankSpace,
+      eligibilityStatus,
+      respondentIsHouseholdHead,
+      householdHeadCnic: headCnic,
+      householdHeadName: headName,
+      relationshipToHead,
+      respondentCnic,
+      respondentName,
+      respondentPhoneNumber,
+      respondentGender,
+      respondentAge,
+    });
 
     return {
+      householdId,
       surveyDate,
+      householdLocation,
       city,
       ucnc,
       address,
       catchmentArea,
       tankSpace,
       enumeratorName,
+      respondentIsHouseholdHead,
+      relationshipToHead,
       headName,
       respondentName,
       respondentCnic,
       headCnic,
       respondentGender,
+      respondentPhoneNumber,
+      respondentAge,
       eligibilityStatus,
+      tableRow,
     };
   };
 
@@ -2693,14 +2801,13 @@ if (householdForm) {
 
     const householdPatch = {
       ...getHouseholdAssessmentSnapshot(eligibilityStatus),
-      householdId,
       status: eligibilityStatus,
       cmoName: enumeratorSelect?.value || "",
       stageStatus: readSubmittedForms()[householdId] || {},
     };
 
     upsertHouseholdRecord(householdId, householdPatch);
-    queueBackendSync("/api/forms/household/submit", {
+    return queueBackendSync("/api/forms/household/submit", {
       householdId,
       payload: householdPatch,
       householdPatch,
@@ -2784,7 +2891,7 @@ if (householdForm) {
   });
 
   if (continueButton) {
-    continueButton.addEventListener("click", () => {
+    continueButton.addEventListener("click", async () => {
       const activePanel = getActivePanel();
       if (!activePanel) {
         return;
@@ -2808,12 +2915,20 @@ if (householdForm) {
       if (activePanel.dataset.stepPanel === "household") {
         const eligibilityResult = getEligibilityResult();
         if (eligibilityResult.isEligible) {
-          saveHouseholdAssessmentRecord("passed");
+          try {
+            await saveHouseholdAssessmentRecord("passed");
+          } catch (error) {
+            // Keep the local save and allow the user to continue.
+          }
           openRespondantStep();
           return;
         }
 
-        saveHouseholdAssessmentRecord("failed");
+        try {
+          await saveHouseholdAssessmentRecord("failed");
+        } catch (error) {
+          // Keep the local save and continue to show the eligibility result.
+        }
         if (feedback) {
           feedback.textContent = eligibilityResult.message;
           feedback.classList.add("form-feedback-error");
@@ -2825,7 +2940,14 @@ if (householdForm) {
 
       if (feedback) {
         saveEligibleHousehold();
-        saveHouseholdAssessmentRecord("passed");
+        try {
+          await saveHouseholdAssessmentRecord("passed");
+        } catch (error) {
+          feedback.textContent = "Household information was saved locally, but the backend/database save did not complete yet.";
+          feedback.classList.add("form-feedback-error");
+          feedback.classList.remove("form-feedback-success");
+          return;
+        }
         feedback.textContent = "Respondant Information submitted successfully.";
         feedback.classList.add("form-feedback-success");
         feedback.classList.remove("form-feedback-error");

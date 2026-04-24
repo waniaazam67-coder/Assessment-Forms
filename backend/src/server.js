@@ -7,9 +7,11 @@ const { sendJson, sendText, sendDownload, readRequestBody, serveStatic } = requi
 const allowedForms = new Set(["household", "seaf", "engineering", "inventory"]);
 const exportableDatasets = new Set([
   "households",
+  "household-info",
   "submitted-forms",
+  "status",
   "form-submissions",
-  "seaf-responses",
+  "socio",
   "seaf",
   "engineering",
   "inventory",
@@ -66,41 +68,17 @@ const toFormSubmissionRows = (formSubmissions = {}) => {
   return rows;
 };
 
-const flattenRow = (value, prefix = "", output = {}) => {
-  if (Array.isArray(value)) {
-    output[prefix] = JSON.stringify(value);
-    return output;
-  }
-
-  if (value && typeof value === "object") {
-    Object.entries(value).forEach(([key, nestedValue]) => {
-      const nextPrefix = prefix ? `${prefix}.${key}` : key;
-      flattenRow(nestedValue, nextPrefix, output);
-    });
-    return output;
-  }
-
-  output[prefix] = value ?? "";
-  return output;
-};
-
-const toSeafResponseRows = (seafResponses = {}) =>
-  Object.entries(seafResponses).map(([householdId, entry]) => ({
-    householdId,
-    submittedAt: entry?.submittedAt || "",
-    payload: entry?.payload || {},
-  }));
-
 const getExportPayload = async (snapshot, dataset) => {
   switch (dataset) {
     case "households":
+    case "household-info":
       return snapshot.households || [];
     case "submitted-forms":
+    case "status":
       return toSubmittedFormsRows(snapshot.submittedForms);
     case "form-submissions":
       return toFormSubmissionRows(snapshot.formSubmissions);
-    case "seaf-responses":
-      return toSeafResponseRows(snapshot.seafResponses);
+    case "socio":
     case "seaf":
       return listDedicatedFormRows("seaf");
     case "engineering":
