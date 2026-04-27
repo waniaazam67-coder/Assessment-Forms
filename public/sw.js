@@ -1,4 +1,4 @@
-const CACHE_VERSION = "shehersaaz-app-v3";
+const CACHE_VERSION = "shehersaaz-app-v4";
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -60,12 +60,12 @@ self.addEventListener("fetch", (event) => {
   if (requestUrl.pathname.startsWith("/api/")) {
     event.respondWith(
       fetch(event.request)
-        .then((networkResponse) => {
-          const responseClone = networkResponse.clone();
-          caches.open(APP_SHELL_CACHE).then((cache) => cache.put(event.request, responseClone));
-          return networkResponse;
-        })
-        .catch(() => caches.match(event.request))
+        .catch(() => new Response(JSON.stringify({ error: "Unable to reach the backend API." }), {
+          status: 503,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }))
     );
     return;
   }

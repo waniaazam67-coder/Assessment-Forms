@@ -65,6 +65,7 @@ async function apiJsonRequest(path) {
     try {
       const response = await fetch(`${baseUrl}${path}`, {
         ...requestOptions,
+        cache: requestOptions.cache || "no-store",
         headers,
       });
 
@@ -1037,21 +1038,23 @@ async function bootDashboardPage() {
   };
 
   const loadRecords = async () => {
-    try {
-      const [nextHealth, nextSnapshot] = await Promise.all([
-        apiJsonRequest("/api/health"),
-        apiJsonRequest("/api/db"),
-      ]);
+    usingBackend = false;
 
-      health = nextHealth;
+    try {
+      const nextSnapshot = await apiJsonRequest("/api/db");
       snapshot = nextSnapshot;
       records = buildRecordsFromSnapshot(nextSnapshot);
       usingBackend = true;
+
+      try {
+        health = await apiJsonRequest("/api/health");
+      } catch (error) {
+        health = null;
+      }
     } catch (error) {
       health = null;
       snapshot = {};
-      records = buildRecordsFromLocalStorage();
-      usingBackend = false;
+      records = [];
     }
 
     renderMetrics(metrics, records);

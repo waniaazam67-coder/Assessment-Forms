@@ -858,7 +858,7 @@ const getStatusPatchForForm = (formKey, status, payload = {}, householdPatch = {
 
   if (formKey === "household") {
     patch.household_status = status;
-  } else if (formKey === "seaf") {
+  } else if (formKey === "seaf" || formKey === "socio") {
     patch.socio_status = status;
   } else if (formKey === "engineering") {
     patch.engineering_status = status;
@@ -958,7 +958,7 @@ const buildFlatFormPayload = (formKey, row = {}) => {
     };
   }
 
-  if (formKey === "seaf") {
+  if (formKey === "seaf" || formKey === "socio") {
     return {
       facilities: [],
       utilities: [],

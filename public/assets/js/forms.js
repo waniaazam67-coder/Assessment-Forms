@@ -171,6 +171,7 @@ const apiJsonRequest = async (path, options = {}) => {
     try {
       const response = await fetch(`${baseUrl}${path}`, {
         method: options.method || "GET",
+        cache: options.cache || "no-store",
         keepalive: Boolean(options.keepalive),
         headers: {
           "Content-Type": "application/json",
@@ -191,6 +192,47 @@ const apiJsonRequest = async (path, options = {}) => {
   }
 
   throw lastError || new Error("Unable to reach the backend API.");
+};
+
+const isEligibleHouseholdStatus = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "passed" || normalized === "eligible" || normalized === "submitted";
+};
+
+const mergeEligibleHouseholds = (households = []) => {
+  const map = new Map();
+
+  households.forEach((household) => {
+    if (!household?.householdId) {
+      return;
+    }
+
+    map.set(household.householdId, {
+      householdId: household.householdId,
+      headName: household.headName || household.selected_household_name || "-",
+      city: household.city || "",
+      respondentCnic: household.respondentCnic || household.respondent_cnic || "",
+      headCnic: household.headCnic || household.head_cnic || "",
+      eligibilityStatus: household.eligibilityStatus || household.status || "",
+    });
+  });
+
+  return Array.from(map.values()).sort((left, right) => String(left.householdId).localeCompare(String(right.householdId)));
+};
+
+const getEligibleHouseholdsForPicker = async () => {
+  try {
+    const households = await apiJsonRequest("/api/households");
+    const eligibleHouseholds = Array.isArray(households)
+      ? households.filter((household) => isEligibleHouseholdStatus(household?.eligibilityStatus || household?.status))
+      : [];
+
+    const normalized = mergeEligibleHouseholds(eligibleHouseholds);
+    localStorage.setItem(eligibleHouseholdsStorageKey, JSON.stringify(normalized));
+    return normalized;
+  } catch (error) {
+    return mergeEligibleHouseholds(readEligibleHouseholds());
+  }
 };
 
 const flushPendingSyncQueue = async () => {
@@ -1528,10 +1570,9 @@ try {
 }
 
 if (householdPickerLinks.length > 0) {
-  const showHouseholdPicker = (targetHref) => {
+  const showHouseholdPicker = async (targetHref) => {
     let picker = document.querySelector("[data-household-picker]");
     let pickerList;
-    const households = readEligibleHouseholds();
 
     if (!picker) {
       picker = document.createElement("div");
@@ -1577,6 +1618,10 @@ if (householdPickerLinks.length > 0) {
       return;
     }
 
+    pickerList.innerHTML = '<p class="household-picker-empty">Loading households...</p>';
+    picker.hidden = false;
+
+    const households = await getEligibleHouseholdsForPicker();
     pickerList.innerHTML = "";
 
     if (households.length === 0) {
@@ -1605,9 +1650,9 @@ if (householdPickerLinks.length > 0) {
   };
 
   householdPickerLinks.forEach((link) => {
-    link.addEventListener("click", (event) => {
+    link.addEventListener("click", async (event) => {
       event.preventDefault();
-      showHouseholdPicker(link.href);
+      await showHouseholdPicker(link.href);
     });
   });
 }

@@ -17,7 +17,7 @@ const {
 } = require("./db");
 const { sendJson, sendText, sendDownload, readRequestBody, serveStatic } = require("./http");
 
-const allowedForms = new Set(["household", "seaf", "engineering", "inventory"]);
+const allowedForms = new Set(["household", "seaf", "socio", "engineering", "inventory"]);
 const exportableDatasets = new Set([
   "households",
   "household-info",
