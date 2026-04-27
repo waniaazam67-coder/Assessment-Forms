@@ -32,7 +32,15 @@
 
         <label>
           <span>Password</span>
-          <input type="password" name="password" placeholder="Enter password" autocomplete="current-password" required>
+          <div class="admin-password-field">
+            <input type="password" name="password" placeholder="Enter password" autocomplete="current-password" required data-password-input>
+            <button type="button" class="admin-password-toggle" data-password-toggle aria-label="Show password" aria-pressed="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
         </label>
 
         <button type="submit" class="admin-button">Login</button>

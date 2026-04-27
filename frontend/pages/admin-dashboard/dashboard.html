@@ -17,38 +17,60 @@
         <img src="../../assets/images/Shehersaaz Logo Update 2025.png" alt="Shehersaaz Logo">
       </div>
 
-      <nav class="admin-nav" aria-label="Dashboard sections">
-        <a href="#overview" class="admin-nav__link is-active">
-          <span class="admin-nav__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1.4"></rect>
-              <rect x="14" y="3" width="7" height="7" rx="1.4"></rect>
-              <rect x="3" y="14" width="7" height="7" rx="1.4"></rect>
-              <rect x="14" y="14" width="7" height="7" rx="1.4"></rect>
-            </svg>
-          </span>
-          <span>Overview</span>
-        </a>
-        <a href="#households" class="admin-nav__link">
-          <span class="admin-nav__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 10.5 12 3l9 7.5"></path>
-              <path d="M5 9.5V21h5v-6h4v6h5V9.5"></path>
-            </svg>
-          </span>
-          <span>Households</span>
-        </a>
-        <a href="#data-tables" class="admin-nav__link">
-          <span class="admin-nav__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
-              <path d="M3 10h18"></path>
-              <path d="M9 4v16"></path>
-            </svg>
-          </span>
-          <span>Data tables</span>
-        </a>
-      </nav>
+      <div class="admin-sidebar__scroll">
+        <section class="admin-nav-group" aria-labelledby="sidebar-menu-heading">
+          <p class="admin-nav-group__label" id="sidebar-menu-heading">Menu</p>
+          <nav class="admin-nav" aria-label="Dashboard sections">
+            <a href="#overview" class="admin-nav__link is-active">
+              <span class="admin-nav__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.4"></rect>
+                  <rect x="14" y="3" width="7" height="7" rx="1.4"></rect>
+                  <rect x="3" y="14" width="7" height="7" rx="1.4"></rect>
+                  <rect x="14" y="14" width="7" height="7" rx="1.4"></rect>
+                </svg>
+              </span>
+              <span class="admin-nav__text">Dashboard</span>
+            </a>
+            <a href="#households" class="admin-nav__link">
+              <span class="admin-nav__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 10.5 12 3l9 7.5"></path>
+                  <path d="M5 9.5V21h5v-6h4v6h5V9.5"></path>
+                </svg>
+              </span>
+              <span class="admin-nav__text">Households</span>
+            </a>
+            <a href="#data-tables" class="admin-nav__link">
+              <span class="admin-nav__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+                  <path d="M3 10h18"></path>
+                  <path d="M9 4v16"></path>
+                </svg>
+              </span>
+              <span class="admin-nav__text">Data Tables</span>
+              <span class="admin-nav__badge">Live</span>
+            </a>
+          </nav>
+        </section>
+
+        <section class="admin-nav-group" aria-labelledby="sidebar-general-heading">
+          <p class="admin-nav-group__label" id="sidebar-general-heading">General</p>
+          <div class="admin-nav admin-nav--secondary">
+            <a class="admin-nav__link" href="../index.html">
+              <span class="admin-nav__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 10.5 12 4l8 6.5"></path>
+                  <path d="M6 9.5V20h12V9.5"></path>
+                  <path d="M9 20v-5h6v5"></path>
+                </svg>
+              </span>
+              <span class="admin-nav__text">Forms Portal</span>
+            </a>
+          </div>
+        </section>
+      </div>
 
       <div class="admin-sidebar__footer">
         <div class="admin-user-card">
@@ -60,8 +82,7 @@
         </div>
 
         <div class="admin-sidebar__actions">
-          <a class="admin-button admin-button--ghost" href="../index.html">Open forms portal</a>
-          <button type="button" class="admin-button admin-button--soft" data-admin-logout>Log out</button>
+          <button type="button" class="admin-button admin-button--soft admin-button--logout" data-admin-logout>Log out</button>
         </div>
       </div>
     </aside>

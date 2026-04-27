@@ -29,6 +29,7 @@ module.exports = {
           "sharafuddin@shehersaaz.org.pk",
           "tailal.masood@shehersaaz.org.pk",
           "m.waqas@shehersaaz.org.pk",
+          "wania.azam@shehersaaz.org.pk",
         ].join(",")
     )
       .split(",")

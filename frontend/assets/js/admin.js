@@ -887,12 +887,25 @@ function bootLoginPage() {
   const form = document.querySelector("[data-admin-login-form]");
   const feedback = document.querySelector("[data-admin-feedback]");
   const submitButton = form?.querySelector('button[type="submit"]');
+  const passwordInput = form?.querySelector("[data-password-input]");
+  const passwordToggle = form?.querySelector("[data-password-toggle]");
 
   const existing = sessionStorage.getItem(AUTH_KEY);
   if (existing) {
     window.location.href = "dashboard.html";
     return;
   }
+
+  passwordToggle?.addEventListener("click", () => {
+    const isVisible = passwordInput?.getAttribute("type") === "text";
+    if (!passwordInput) {
+      return;
+    }
+
+    passwordInput.setAttribute("type", isVisible ? "password" : "text");
+    passwordToggle.setAttribute("aria-pressed", String(!isVisible));
+    passwordToggle.setAttribute("aria-label", isVisible ? "Show password" : "Hide password");
+  });
 
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1111,7 +1124,12 @@ async function bootDashboardPage() {
 
   navLinks.forEach((link) => {
     link.addEventListener("click", (event) => {
-      const target = (link.getAttribute("href") || "").replace("#", "");
+      const href = String(link.getAttribute("href") || "").trim();
+      if (!href.startsWith("#")) {
+        return;
+      }
+
+      const target = href.replace("#", "");
       if (!target) {
         return;
       }
