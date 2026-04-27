@@ -8,7 +8,42 @@ const submittedFormsStorageKey = "shehersaaz-submitted-forms";
 const seafResponsesStorageKey = "shehersaaz-seaf-responses";
 const householdRecordsStorageKey = "shehersaaz-household-records";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
-const backendBaseUrl = window.location.protocol === "file:" || isLocalFrontendDev ? "http://127.0.0.1:4000" : window.location.origin;
+
+const getConfiguredApiBaseUrl = () => {
+  const metaTag = document.querySelector('meta[name="api-base-url"]');
+  const configuredValue =
+    window.__SHEHERSAAZ_API_BASE_URL__ ||
+    metaTag?.getAttribute("content") ||
+    "";
+
+  return String(configuredValue || "").trim().replace(/\/+$/, "");
+};
+
+const getApiBaseUrlCandidates = () => {
+  if (window.location.protocol === "file:" || isLocalFrontendDev) {
+    return ["http://127.0.0.1:4000"];
+  }
+
+  const configuredBaseUrl = getConfiguredApiBaseUrl();
+  const candidates = [];
+
+  if (configuredBaseUrl) {
+    candidates.push(configuredBaseUrl);
+  }
+
+  candidates.push(window.location.origin);
+
+  const hostnameParts = window.location.hostname.split(".").filter(Boolean);
+  if (hostnameParts.length > 2) {
+    const apexHostname = hostnameParts.slice(1).join(".");
+    candidates.push(`${window.location.protocol}//${apexHostname}`);
+  }
+
+  return Array.from(new Set(candidates.filter(Boolean)));
+};
+
+const backendBaseUrls = getApiBaseUrlCandidates();
+const backendBaseUrl = backendBaseUrls[0];
 
 function readJson(storage, key, fallback) {
   try {
@@ -31,29 +66,39 @@ async function apiJsonRequest(path) {
     ...(requestOptions.headers || {}),
   };
 
-  const response = await fetch(`${backendBaseUrl}${path}`, {
-    ...requestOptions,
-    headers,
-  });
+  let lastError = null;
 
-  if (!response.ok) {
-    let message = `Request failed with status ${response.status}`;
-
+  for (const baseUrl of backendBaseUrls) {
     try {
-      const payload = await response.json();
-      if (payload?.error) {
-        message = payload.error;
-      }
-    } catch (error) {
-      // Ignore JSON parse failures and keep the default message.
-    }
+      const response = await fetch(`${baseUrl}${path}`, {
+        ...requestOptions,
+        headers,
+      });
 
-    const requestError = new Error(message);
-    requestError.status = response.status;
-    throw requestError;
+      if (!response.ok) {
+        let message = `Request failed with status ${response.status}`;
+
+        try {
+          const payload = await response.json();
+          if (payload?.error) {
+            message = payload.error;
+          }
+        } catch (error) {
+          // Ignore JSON parse failures and keep the default message.
+        }
+
+        const requestError = new Error(message);
+        requestError.status = response.status;
+        throw requestError;
+      }
+
+      return response.json();
+    } catch (error) {
+      lastError = error;
+    }
   }
 
-  return response.json();
+  throw lastError || new Error("Unable to reach the backend API.");
 }
 
 function escapeHtml(value) {

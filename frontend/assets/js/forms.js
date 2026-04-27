@@ -15,7 +15,42 @@ const seafResponsesStorageKey = "shehersaaz-seaf-responses";
 const householdRecordsStorageKey = "shehersaaz-household-records";
 const pendingSyncQueueStorageKey = "shehersaaz-pending-sync-queue";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
-const backendBaseUrl = window.location.protocol === "file:" || isLocalFrontendDev ? "http://127.0.0.1:4000" : window.location.origin;
+
+const getConfiguredApiBaseUrl = () => {
+  const metaTag = document.querySelector('meta[name="api-base-url"]');
+  const configuredValue =
+    window.__SHEHERSAAZ_API_BASE_URL__ ||
+    metaTag?.getAttribute("content") ||
+    "";
+
+  return String(configuredValue || "").trim().replace(/\/+$/, "");
+};
+
+const getApiBaseUrlCandidates = () => {
+  if (window.location.protocol === "file:" || isLocalFrontendDev) {
+    return ["http://127.0.0.1:4000"];
+  }
+
+  const configuredBaseUrl = getConfiguredApiBaseUrl();
+  const candidates = [];
+
+  if (configuredBaseUrl) {
+    candidates.push(configuredBaseUrl);
+  }
+
+  candidates.push(window.location.origin);
+
+  const hostnameParts = window.location.hostname.split(".").filter(Boolean);
+  if (hostnameParts.length > 2) {
+    const apexHostname = hostnameParts.slice(1).join(".");
+    candidates.push(`${window.location.protocol}//${apexHostname}`);
+  }
+
+  return Array.from(new Set(candidates.filter(Boolean)));
+};
+
+const backendBaseUrls = getApiBaseUrlCandidates();
+const backendBaseUrl = backendBaseUrls[0];
 
 if ("serviceWorker" in navigator && window.location.protocol !== "file:" && !isLocalFrontendDev) {
   window.addEventListener("load", () => {
@@ -110,22 +145,32 @@ const enqueuePendingSync = (entry) => {
 };
 
 const apiJsonRequest = async (path, options = {}) => {
-  const response = await fetch(`${backendBaseUrl}${path}`, {
-    method: options.method || "GET",
-    keepalive: Boolean(options.keepalive),
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    body: options.body,
-  });
+  let lastError = null;
 
-  if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`);
+  for (const baseUrl of backendBaseUrls) {
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: options.method || "GET",
+        keepalive: Boolean(options.keepalive),
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
+        body: options.body,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+
+      const text = await response.text();
+      return text ? JSON.parse(text) : null;
+    } catch (error) {
+      lastError = error;
+    }
   }
 
-  const text = await response.text();
-  return text ? JSON.parse(text) : null;
+  throw lastError || new Error("Unable to reach the backend API.");
 };
 
 const flushPendingSyncQueue = async () => {

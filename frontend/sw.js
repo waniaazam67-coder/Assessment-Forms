@@ -1,4 +1,4 @@
-const CACHE_VERSION = "shehersaaz-app-v2";
+const CACHE_VERSION = "shehersaaz-app-v3";
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -66,6 +66,25 @@ self.addEventListener("fetch", (event) => {
           return networkResponse;
         })
         .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  const isDocumentRequest = event.request.mode === "navigate";
+  const isStaticAsset = [".html", ".css", ".js"].some((extension) => requestUrl.pathname.endsWith(extension));
+
+  if (isDocumentRequest || isStaticAsset) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          const responseClone = networkResponse.clone();
+          caches.open(APP_SHELL_CACHE).then((cache) => cache.put(event.request, responseClone));
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cachedResponse = await caches.match(event.request);
+          return cachedResponse || caches.match("/pages/index.html");
+        })
     );
     return;
   }
