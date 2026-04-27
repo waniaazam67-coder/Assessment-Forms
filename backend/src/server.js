@@ -298,6 +298,17 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.on("error", (error) => {
+  if (error && error.code === "EADDRINUSE") {
+    console.error(`Port ${port} is already in use on ${host}. Stop the other server process or change PORT in backend/.env.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  console.error("Unexpected server error:", error);
+  process.exitCode = 1;
+});
+
 initializeDatabase()
   .then(() => {
     server.listen(port, host, () => {

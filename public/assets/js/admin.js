@@ -32,12 +32,6 @@ const getApiBaseUrlCandidates = () => {
 
   candidates.push(window.location.origin);
 
-  const hostnameParts = window.location.hostname.split(".").filter(Boolean);
-  if (hostnameParts.length > 2) {
-    const apexHostname = hostnameParts.slice(1).join(".");
-    candidates.push(`${window.location.protocol}//${apexHostname}`);
-  }
-
   return Array.from(new Set(candidates.filter(Boolean)));
 };
 
@@ -923,7 +917,7 @@ function bootLoginPage() {
     }
 
     try {
-      const result = await apiJsonRequest("/api/management/login", {
+      const result = await apiJsonRequest("/api/admin/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

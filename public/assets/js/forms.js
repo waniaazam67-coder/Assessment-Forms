@@ -135,12 +135,32 @@ const writePendingSyncQueue = (queue) => {
   localStorage.setItem(pendingSyncQueueStorageKey, JSON.stringify(queue));
 };
 
+const findPendingSyncIndex = (queue, entry) =>
+  queue.findIndex((queuedEntry) => {
+    if (!queuedEntry || queuedEntry.path !== entry.path || (queuedEntry.method || "POST") !== (entry.method || "POST")) {
+      return false;
+    }
+
+    return JSON.stringify(queuedEntry.body || {}) === JSON.stringify(entry.body || {});
+  });
+
 const enqueuePendingSync = (entry) => {
   const queue = readPendingSyncQueue();
-  queue.push({
+  const normalizedEntry = {
     ...entry,
     createdAt: entry.createdAt || new Date().toISOString(),
-  });
+  };
+  const existingIndex = findPendingSyncIndex(queue, normalizedEntry);
+
+  if (existingIndex >= 0) {
+    queue[existingIndex] = {
+      ...queue[existingIndex],
+      ...normalizedEntry,
+    };
+  } else {
+    queue.push(normalizedEntry);
+  }
+
   writePendingSyncQueue(queue);
 };
 
@@ -198,18 +218,28 @@ const flushPendingSyncQueue = async () => {
 const queueBackendSync = (path, body, method = "POST") => {
   return (async () => {
     try {
-      return await apiJsonRequest(path, {
+      const response = await apiJsonRequest(path, {
         method,
         body: JSON.stringify(body || {}),
         keepalive: method.toUpperCase() === "POST",
       });
+      return {
+        ok: true,
+        queued: false,
+        response,
+      };
     } catch (error) {
       enqueuePendingSync({
         path,
         method,
         body,
+        lastError: error instanceof Error ? error.message : String(error),
       });
-      throw error;
+      return {
+        ok: false,
+        queued: true,
+        error,
+      };
     }
   })();
 };

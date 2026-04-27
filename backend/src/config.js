@@ -3,7 +3,7 @@ const dotenv = require("dotenv");
 
 const backendDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(backendDir, "..");
-const frontendDir = path.join(projectRoot, "frontend");
+const frontendDir = path.join(projectRoot, "public");
 
 dotenv.config({ path: path.join(backendDir, ".env") });
 
