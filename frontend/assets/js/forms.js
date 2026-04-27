@@ -446,6 +446,277 @@ const restoreFormState = (form, formState) => {
   });
 };
 
+const stripPreviewLabel = (value) =>
+  String(value || "")
+    .replace(/\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getNearestPreviewHeading = (control, headings) => {
+  let latestHeading = "";
+
+  headings.forEach((heading) => {
+    if (heading.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      latestHeading = stripPreviewLabel(heading.textContent);
+    }
+  });
+
+  return latestHeading;
+};
+
+const getPreviewLabelForControl = (control, headings, fallbackIndex) => {
+  const fieldLabel = control.closest(".field, .field-group")?.querySelector("span");
+  if (fieldLabel?.textContent) {
+    return stripPreviewLabel(fieldLabel.textContent);
+  }
+
+  const catchmentRow = control.closest("[data-catchment-row]");
+  if (catchmentRow) {
+    const rowName = stripPreviewLabel(catchmentRow.querySelector("td")?.textContent || "Catchment row");
+    if (control.matches("[data-catchment-width]")) {
+      return `${rowName} width`;
+    }
+    if (control.matches("[data-catchment-length]")) {
+      return `${rowName} length`;
+    }
+    if (control.matches("[data-catchment-area]")) {
+      return `${rowName} area`;
+    }
+    if (control.matches("[data-drainage-diameter]")) {
+      const diameterInputs = Array.from(catchmentRow.querySelectorAll("[data-drainage-diameter]"));
+      const diameterIndex = diameterInputs.indexOf(control);
+      return `${rowName} drainage point ${diameterIndex + 1} diameter`;
+    }
+  }
+
+  const inventoryRow = control.closest("[data-inventory-row]");
+  if (inventoryRow) {
+    const itemName =
+      inventoryRow.dataset.itemName ||
+      inventoryRow.querySelector(".inventory-table__item-name")?.textContent ||
+      "Inventory item";
+    const normalizedItemName = stripPreviewLabel(itemName);
+    if (control.matches("[data-inventory-item-select]")) {
+      return "Other inventory item";
+    }
+    if (control.matches("[data-inventory-spec-select]")) {
+      return `${normalizedItemName} specification`;
+    }
+    if (control.matches("[data-inventory-quantity]")) {
+      return `${normalizedItemName} quantity`;
+    }
+  }
+
+  const closestLabel = control.closest("label");
+  if (closestLabel && (control.type === "checkbox" || control.type === "radio")) {
+    const labelClone = closestLabel.cloneNode(true);
+    labelClone.querySelectorAll("input, select, textarea, button").forEach((node) => node.remove());
+    const labelText = stripPreviewLabel(labelClone.textContent);
+    if (labelText) {
+      return labelText;
+    }
+  }
+
+  const ariaLabel = stripPreviewLabel(control.getAttribute("aria-label"));
+  if (ariaLabel) {
+    return ariaLabel;
+  }
+
+  const placeholder = stripPreviewLabel(control.getAttribute("placeholder"));
+  if (placeholder) {
+    return placeholder;
+  }
+
+  const heading = getNearestPreviewHeading(control, headings);
+  if (heading) {
+    return heading;
+  }
+
+  return `Field ${fallbackIndex + 1}`;
+};
+
+const getPreviewValueForControl = (control) => {
+  if (!control) {
+    return "";
+  }
+
+  if (control.tagName === "SELECT") {
+    return stripPreviewLabel(control.options[control.selectedIndex]?.textContent || control.value);
+  }
+
+  if (control.type === "checkbox" || control.type === "radio") {
+    return control.checked ? "Selected" : "";
+  }
+
+  return stripPreviewLabel(control.value);
+};
+
+const buildPreviewEntriesFromForm = (form) => {
+  if (!form) {
+    return [];
+  }
+
+  const headings = Array.from(form.querySelectorAll(".section-header h2, .section-header h3, .repeatable-card__header h3"));
+  const controls = Array.from(form.querySelectorAll("input, select, textarea")).filter((control) => {
+    const type = String(control.type || "").toLowerCase();
+    if (["hidden", "button", "submit", "reset"].includes(type)) {
+      return false;
+    }
+    if (control.closest("template") || control.disabled) {
+      return false;
+    }
+    return true;
+  });
+
+  const entries = [];
+  const processedGroups = new Set();
+
+  controls.forEach((control, index) => {
+    const type = String(control.type || "").toLowerCase();
+    if ((type === "checkbox" || type === "radio") && control.name) {
+      if (processedGroups.has(control.name)) {
+        return;
+      }
+
+      processedGroups.add(control.name);
+      const groupControls = controls.filter((item) => item.name === control.name);
+      const checkedControls = groupControls.filter((item) => item.checked);
+      if (checkedControls.length === 0) {
+        return;
+      }
+
+      const values = checkedControls.map((item, checkedIndex) => getPreviewLabelForControl(item, headings, checkedIndex)).filter(Boolean);
+      entries.push({
+        label: getNearestPreviewHeading(control, headings) || getPreviewLabelForControl(control, headings, index),
+        value: values.join(", "),
+      });
+      return;
+    }
+
+    if ((type === "checkbox" || type === "radio") && !control.checked) {
+      return;
+    }
+
+    const value = getPreviewValueForControl(control);
+    if (!value) {
+      return;
+    }
+
+    entries.push({
+      label: getPreviewLabelForControl(control, headings, index),
+      value,
+    });
+  });
+
+  return entries;
+};
+
+const createPreviewDialog = () => {
+  const dialog = document.createElement("dialog");
+  dialog.className = "manual-dialog preview-dialog";
+  dialog.dataset.previewDialog = "true";
+  dialog.innerHTML = `
+    <div class="manual-dialog__header preview-dialog__header">
+      <div>
+        <p class="manual-dialog__eyebrow">Review Before Submit</p>
+        <h2 data-preview-title>Form preview</h2>
+        <p class="preview-dialog__lead" data-preview-lead></p>
+      </div>
+      <button class="manual-dialog__close" type="button" data-preview-close aria-label="Close preview">&times;</button>
+    </div>
+    <div class="manual-dialog__body preview-dialog__body">
+      <div class="preview-list" data-preview-list></div>
+    </div>
+    <div class="preview-dialog__actions">
+      <button class="button button-muted" type="button" data-preview-edit>Edit Form</button>
+      <button class="button button-primary" type="button" data-preview-submit>Submit Form</button>
+    </div>
+  `;
+
+  document.body.append(dialog);
+  return dialog;
+};
+
+const openSubmissionPreview = ({ title, lead, entries }) =>
+  new Promise((resolve) => {
+    const dialog = document.querySelector("[data-preview-dialog]") || createPreviewDialog();
+    const titleElement = dialog.querySelector("[data-preview-title]");
+    const leadElement = dialog.querySelector("[data-preview-lead]");
+    const listElement = dialog.querySelector("[data-preview-list]");
+    const editButton = dialog.querySelector("[data-preview-edit]");
+    const submitButton = dialog.querySelector("[data-preview-submit]");
+    const closeButton = dialog.querySelector("[data-preview-close]");
+
+    if (titleElement) {
+      titleElement.textContent = title || "Form preview";
+    }
+
+    if (leadElement) {
+      leadElement.textContent = lead || "Please review the entered details before submitting.";
+    }
+
+    if (listElement) {
+      listElement.innerHTML = "";
+      (entries || []).forEach((entry) => {
+        const item = document.createElement("article");
+        item.className = "preview-item";
+        item.innerHTML = `
+          <h3>${entry.label}</h3>
+          <p>${entry.value}</p>
+        `;
+        listElement.append(item);
+      });
+
+      if ((entries || []).length === 0) {
+        const emptyState = document.createElement("p");
+        emptyState.className = "helper-text";
+        emptyState.textContent = "No filled fields were found to preview yet.";
+        listElement.append(emptyState);
+      }
+    }
+
+    const cleanup = () => {
+      dialog.removeEventListener("cancel", handleCancel);
+      editButton?.removeEventListener("click", handleEdit);
+      submitButton?.removeEventListener("click", handleSubmit);
+      closeButton?.removeEventListener("click", handleEdit);
+      dialog.removeEventListener("click", handleBackdropClick);
+    };
+
+    const finish = (shouldSubmit) => {
+      cleanup();
+      dialog.close();
+      resolve(shouldSubmit);
+    };
+
+    const handleCancel = (event) => {
+      event.preventDefault();
+      finish(false);
+    };
+
+    const handleEdit = () => finish(false);
+    const handleSubmit = () => finish(true);
+    const handleBackdropClick = (event) => {
+      const bounds = dialog.getBoundingClientRect();
+      const clickedOutside =
+        event.clientX < bounds.left ||
+        event.clientX > bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY > bounds.bottom;
+
+      if (clickedOutside) {
+        finish(false);
+      }
+    };
+
+    dialog.addEventListener("cancel", handleCancel);
+    editButton?.addEventListener("click", handleEdit);
+    submitButton?.addEventListener("click", handleSubmit);
+    closeButton?.addEventListener("click", handleEdit);
+    dialog.addEventListener("click", handleBackdropClick);
+    dialog.showModal();
+  });
+
 const slugifySubmissionKey = (value, fallback = "field") => {
   const normalized = String(value || "")
     .trim()
@@ -2021,6 +2292,16 @@ if (inventoryForm) {
         return;
       }
 
+      const shouldSubmitInventory = await openSubmissionPreview({
+        title: "Inventory Preview",
+        lead: "Review the selected inventory items and quantities before submitting.",
+        entries: buildPreviewEntriesFromForm(inventoryForm),
+      });
+
+      if (!shouldSubmitInventory) {
+        return;
+      }
+
       const inventoryPayload = collectInventorySubmissionPayload();
       try {
         await setSubmittedFormStatus(householdId, "inventory", "Submitted", {
@@ -2267,6 +2548,16 @@ if (socioeconomicForm) {
       }
 
       const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
+      const shouldSubmitSeaf = await openSubmissionPreview({
+        title: "Socioeconomic Assessment Preview",
+        lead: "Review the socioeconomic assessment details before submitting.",
+        entries: buildPreviewEntriesFromForm(socioeconomicForm),
+      });
+
+      if (!shouldSubmitSeaf) {
+        return;
+      }
+
       const seafPayload = saveSeafResponse();
       try {
         await setSubmittedFormStatus(householdId, "seaf", "Submitted", {
@@ -2729,6 +3020,16 @@ if (engineeringForm) {
           engineeringFeedback.classList.add("form-feedback-error");
           engineeringFeedback.classList.remove("form-feedback-success");
         }
+        return;
+      }
+
+      const shouldSubmitEngineering = await openSubmissionPreview({
+        title: "Engineering Assessment Preview",
+        lead: "Review the engineering assessment details before submitting.",
+        entries: buildPreviewEntriesFromForm(engineeringForm),
+      });
+
+      if (!shouldSubmitEngineering) {
         return;
       }
 
@@ -3523,6 +3824,16 @@ if (householdForm) {
       }
 
       if (feedback) {
+        const shouldSubmitHousehold = await openSubmissionPreview({
+          title: "Household Information Preview",
+          lead: "Review the household and respondent details before submitting.",
+          entries: buildPreviewEntriesFromForm(householdForm),
+        });
+
+        if (!shouldSubmitHousehold) {
+          return;
+        }
+
         saveEligibleHousehold();
         try {
           await saveHouseholdAssessmentRecord("passed");
