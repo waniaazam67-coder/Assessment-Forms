@@ -2818,6 +2818,7 @@ if (householdForm) {
     ]
   };
   let toastTimeoutId;
+  let isFetchingHouseholdLocation = false;
 
   const getHouseholdAssessmentSnapshot = (eligibilityStatus = "") => {
     const householdId = householdIdInput?.value.trim() || "";
@@ -2929,6 +2930,61 @@ if (householdForm) {
     }
   };
 
+  const formatGeolocationError = (error) => {
+    if (!error) {
+      return "Unable to fetch the current location.";
+    }
+
+    switch (error.code) {
+      case error.PERMISSION_DENIED:
+        return "Location access was denied. Please allow browser location permission and try again.";
+      case error.POSITION_UNAVAILABLE:
+        return "Current location is unavailable right now. Please try again.";
+      case error.TIMEOUT:
+        return "Fetching the current location timed out. Please try again.";
+      default:
+        return "Unable to fetch the current location.";
+    }
+  };
+
+  const captureCurrentHouseholdLocation = () => {
+    if (!householdLocationInput || isFetchingHouseholdLocation) {
+      return;
+    }
+
+    if (!("geolocation" in navigator)) {
+      showFloatingMessage("This browser does not support location access.");
+      return;
+    }
+
+    isFetchingHouseholdLocation = true;
+    const previousValue = householdLocationInput.value;
+    householdLocationInput.value = "Fetching current coordinates...";
+    householdLocationInput.setAttribute("aria-busy", "true");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const latitude = Number(position.coords.latitude).toFixed(6);
+        const longitude = Number(position.coords.longitude).toFixed(6);
+        householdLocationInput.value = `${latitude}, ${longitude}`;
+        householdLocationInput.removeAttribute("aria-busy");
+        isFetchingHouseholdLocation = false;
+        showFloatingMessage("Current coordinates captured successfully.");
+      },
+      (error) => {
+        householdLocationInput.value = previousValue;
+        householdLocationInput.removeAttribute("aria-busy");
+        isFetchingHouseholdLocation = false;
+        showFloatingMessage(formatGeolocationError(error), { persistent: true });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+  };
+
   const readGeneratedIds = () => {
     try {
       const storedIds = localStorage.getItem(generatedIdsStorageKey);
@@ -3036,6 +3092,16 @@ if (householdForm) {
     citySelect.addEventListener("change", populateStaffOptions);
     syncInterviewAreas();
     populateStaffOptions();
+  }
+
+  if (householdLocationInput) {
+    householdLocationInput.addEventListener("click", captureCurrentHouseholdLocation);
+    householdLocationInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        captureCurrentHouseholdLocation();
+      }
+    });
   }
 
   const formatCnicValue = (value) => {
