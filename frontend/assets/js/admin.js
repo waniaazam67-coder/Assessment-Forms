@@ -543,9 +543,6 @@ function renderMetrics(container, records) {
       <span class="admin-metric__label">${escapeHtml(metric.label)}</span>
       <strong class="admin-metric__value">${escapeHtml(metric.value)}</strong>
       <span class="admin-metric__subtext${metric.subtextTone === "positive" ? " admin-metric__subtext--positive" : ""}">${escapeHtml(metric.subtext || "")}</span>
-      <div class="admin-progress" aria-hidden="true">
-        <div class="admin-progress__bar admin-progress__bar--${escapeHtml(metric.progressTone || "blue")}" style="width: ${Math.max(0, Math.min(100, Number(metric.progress) || 0))}%"></div>
-      </div>
     `;
     container.append(item);
   });
@@ -926,10 +923,7 @@ async function bootDashboardPage() {
   const pipeline = document.querySelector("[data-admin-pipeline]");
   const pages = Array.from(document.querySelectorAll("[data-admin-page]"));
   const navLinks = Array.from(document.querySelectorAll(".admin-nav__link"));
-  const pageTitle = document.querySelector("[data-admin-page-title]");
-  const pageSubtitle = document.querySelector("[data-admin-page-subtitle]");
   const tableBody = document.querySelector("[data-admin-data-table-body]");
-  const dataSource = document.querySelector("[data-admin-data-source]");
   const refreshButton = document.querySelector("[data-admin-refresh]");
   const exportCsvButton = document.querySelector("[data-admin-export-csv]");
   const exportJsonButton = document.querySelector("[data-admin-export-json]");
@@ -939,8 +933,6 @@ async function bootDashboardPage() {
   const householdSummary = document.querySelector("[data-admin-household-summary]");
   const householdList = document.querySelector("[data-admin-household-list]");
   const householdSearch = document.querySelector("[data-admin-household-search]");
-  const systemStatus = document.querySelector("[data-admin-system-status]");
-  const recentActivity = document.querySelector("[data-admin-activity-list]");
   const filters = {
     location: document.querySelector("[data-admin-filter-location]"),
     status: document.querySelector("[data-admin-filter-status]"),
@@ -965,24 +957,6 @@ async function bootDashboardPage() {
 
   const setActivePage = (pageId) => {
     const normalized = pageId || "overview";
-    const copy = {
-      overview: {
-        title: "Overview",
-        subtitle: "Assessment programme summary",
-      },
-      households: {
-        title: "Households",
-        subtitle: "Individual household records",
-      },
-      "data-tables": {
-        title: "Data tables",
-        subtitle: "Filter, explore and export data",
-      },
-      access: {
-        title: "Settings",
-        subtitle: "System status and recent activity",
-      },
-    };
 
     pages.forEach((page) => {
       const isActive = page.id === normalized;
@@ -994,14 +968,6 @@ async function bootDashboardPage() {
       const linkHash = (link.getAttribute("href") || "").replace("#", "");
       link.classList.toggle("is-active", linkHash === normalized);
     });
-
-    if (pageTitle) {
-      pageTitle.textContent = copy[normalized]?.title || "Overview";
-    }
-
-    if (pageSubtitle) {
-      pageSubtitle.textContent = copy[normalized]?.subtitle || "Assessment programme summary";
-    }
   };
 
   const renderTable = () => {
@@ -1016,20 +982,10 @@ async function bootDashboardPage() {
   };
 
   const renderHouseholds = () => {
-    renderHouseholdSummary(householdSummary, records);
     renderHouseholdList(householdList, records, householdSearch?.value || "");
   };
 
-  const renderAccess = () => {
-    renderSystemStatus(systemStatus, records, snapshot, health, usingBackend);
-    renderRecentActivity(recentActivity, snapshot);
-  };
-
   const loadRecords = async () => {
-    if (dataSource) {
-      dataSource.textContent = "Loading latest records...";
-    }
-
     try {
       const [nextHealth, nextSnapshot] = await Promise.all([
         apiJsonRequest("/api/health"),
@@ -1040,26 +996,17 @@ async function bootDashboardPage() {
       snapshot = nextSnapshot;
       records = buildRecordsFromSnapshot(nextSnapshot);
       usingBackend = true;
-
-      if (dataSource) {
-        dataSource.textContent = "Connected to Node.js + MySQL. All dashboard sections are using live database data.";
-      }
     } catch (error) {
       health = null;
       snapshot = {};
       records = buildRecordsFromLocalStorage();
       usingBackend = false;
-
-      if (dataSource) {
-        dataSource.textContent = "Backend is unavailable. Dashboard is showing browser-stored fallback data only.";
-      }
     }
 
     renderMetrics(metrics, records);
     renderPipeline(pipeline, records);
     renderTable();
     renderHouseholds();
-    renderAccess();
   };
 
   Object.values(filters).forEach((control) => {

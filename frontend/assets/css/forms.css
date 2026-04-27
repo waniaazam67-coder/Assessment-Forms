@@ -135,8 +135,15 @@ select {
   color: var(--text-soft);
 }
 
-.manual-button {
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
   margin-top: 26px;
+}
+
+.manual-button {
   min-height: 52px;
   padding: 0 22px;
   border: 1px solid rgba(88, 194, 125, 0.28);
@@ -154,6 +161,29 @@ select {
 .manual-button:focus-visible {
   background: rgba(88, 194, 125, 0.16);
   border-color: rgba(88, 194, 125, 0.5);
+  transform: translateY(-1px);
+}
+
+.management-login-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(96, 126, 147, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text-main);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.management-login-link:hover,
+.management-login-link:focus-visible {
+  background: #ffffff;
+  border-color: rgba(96, 126, 147, 0.38);
   transform: translateY(-1px);
 }
 

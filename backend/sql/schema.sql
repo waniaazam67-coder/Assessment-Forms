@@ -1,6 +1,3 @@
-CREATE DATABASE IF NOT EXISTS shehersaaz_forms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE shehersaaz_forms;
-
 CREATE TABLE IF NOT EXISTS household_info (
   household_id VARCHAR(64) NOT NULL PRIMARY KEY,
   created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
