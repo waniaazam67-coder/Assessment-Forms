@@ -360,6 +360,16 @@ const withConnection = async (handler) => {
 };
 
 const createSchemaStatements = [
+  `CREATE TABLE IF NOT EXISTS admin_users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    email VARCHAR(190) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    role ENUM('admin', 'manager', 'viewer') NOT NULL DEFAULT 'admin',
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   `CREATE TABLE IF NOT EXISTS household_info (
     household_id VARCHAR(64) NOT NULL PRIMARY KEY,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -1249,6 +1259,73 @@ const healthCheck = async () => {
   return Boolean(rows[0]?.ok === 1);
 };
 
+const countAdminUsers = async () => {
+  const [rows] = await ensurePool().query("SELECT COUNT(*) AS total FROM admin_users");
+  return Number(rows[0]?.total || 0);
+};
+
+const findAdminUserByEmail = async (email) => {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  const [rows] = await ensurePool().query(
+    `SELECT id, name, email, password_hash, role, is_active, created_at, updated_at
+     FROM admin_users
+     WHERE email = ?
+     LIMIT 1`,
+    [normalizedEmail]
+  );
+
+  return rows[0] || null;
+};
+
+const createAdminUser = async ({ name, email, passwordHash, role = "admin", isActive = 1 }) => {
+  const normalizedName = String(name || "").trim();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedPasswordHash = String(passwordHash || "").trim();
+  const normalizedRole = ["admin", "manager", "viewer"].includes(role) ? role : "admin";
+  const activeFlag = isActive ? 1 : 0;
+
+  if (!normalizedName || !normalizedEmail || !normalizedPasswordHash) {
+    throw new Error("Name, email, and password hash are required.");
+  }
+
+  await ensurePool().query(
+    `INSERT INTO admin_users (name, email, password_hash, role, is_active)
+     VALUES (?, ?, ?, ?, ?)`,
+    [normalizedName, normalizedEmail, normalizedPasswordHash, normalizedRole, activeFlag]
+  );
+
+  return findAdminUserByEmail(normalizedEmail);
+};
+
+const upsertAdminUser = async ({ name, email, passwordHash, role = "admin", isActive = 1 }) => {
+  const normalizedName = String(name || "").trim();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedPasswordHash = String(passwordHash || "").trim();
+  const normalizedRole = ["admin", "manager", "viewer"].includes(role) ? role : "admin";
+  const activeFlag = isActive ? 1 : 0;
+
+  if (!normalizedName || !normalizedEmail || !normalizedPasswordHash) {
+    throw new Error("Name, email, and password hash are required.");
+  }
+
+  await ensurePool().query(
+    `INSERT INTO admin_users (name, email, password_hash, role, is_active)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       name = VALUES(name),
+       password_hash = VALUES(password_hash),
+       role = VALUES(role),
+       is_active = VALUES(is_active)`,
+    [normalizedName, normalizedEmail, normalizedPasswordHash, normalizedRole, activeFlag]
+  );
+
+  return findAdminUserByEmail(normalizedEmail);
+};
+
 const initializeDatabase = async () => {
   await ensureDatabase();
   await ensureSchema();
@@ -1257,6 +1334,10 @@ const initializeDatabase = async () => {
 module.exports = {
   initializeDatabase,
   healthCheck,
+  countAdminUsers,
+  findAdminUserByEmail,
+  createAdminUser,
+  upsertAdminUser,
   listHouseholds,
   listDedicatedFormRows,
   getHouseholdById,

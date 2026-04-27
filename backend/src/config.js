@@ -12,6 +12,31 @@ const toPort = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const toDisplayName = (email, fallbackName = "") => {
+  const normalizedFallback = String(fallbackName || "").trim();
+  if (normalizedFallback) {
+    return normalizedFallback;
+  }
+
+  return String(email || "")
+    .split("@")[0]
+    .replace(/[._]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const fallbackAdminEmail = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+const fallbackAdminPassword = String(process.env.ADMIN_PASSWORD || process.env.MANAGEMENT_PASSWORD || "").trim();
+const fallbackAdminName = String(process.env.ADMIN_NAME || "").trim();
+const fallbackAdminUser =
+  fallbackAdminEmail && fallbackAdminPassword
+    ? {
+        email: fallbackAdminEmail,
+        password: fallbackAdminPassword,
+        name: toDisplayName(fallbackAdminEmail, fallbackAdminName),
+        role: "admin",
+      }
+    : null;
+
 module.exports = {
   backendDir,
   projectRoot,
@@ -21,24 +46,7 @@ module.exports = {
   host: process.env.HOST || "127.0.0.1",
   port: toPort(process.env.PORT, 4000),
   management: {
-    password: String(process.env.MANAGEMENT_PASSWORD || process.env.ADMIN_PASSWORD || "Admin@2025"),
-    users: String(
-      process.env.MANAGEMENT_USERS ||
-        [
-          "beenish.kulsoom@shehersaaz.org.pk",
-          "sharafuddin@shehersaaz.org.pk",
-          "tailal.masood@shehersaaz.org.pk",
-          "m.waqas@shehersaaz.org.pk",
-          "wania.azam@shehersaaz.org.pk",
-        ].join(",")
-    )
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean)
-      .map((email) => ({
-        email,
-        name: email.split("@")[0].replace(/[._]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()),
-      })),
+    user: fallbackAdminUser,
   },
   db: {
     host: process.env.DB_HOST || "localhost",

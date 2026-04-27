@@ -1,7 +1,20 @@
 const http = require("node:http");
 const { URL } = require("node:url");
+const bcrypt = require("bcryptjs");
 const { frontendDir, host, port, management } = require("./config");
-const { healthCheck, initializeDatabase, listHouseholds, listDedicatedFormRows, getHouseholdById, getFormSubmission, getSnapshot, upsertHousehold, submitForm } = require("./db");
+const {
+  healthCheck,
+  initializeDatabase,
+  countAdminUsers,
+  findAdminUserByEmail,
+  listHouseholds,
+  listDedicatedFormRows,
+  getHouseholdById,
+  getFormSubmission,
+  getSnapshot,
+  upsertHousehold,
+  submitForm,
+} = require("./db");
 const { sendJson, sendText, sendDownload, readRequestBody, serveStatic } = require("./http");
 
 const allowedForms = new Set(["household", "seaf", "engineering", "inventory"]);
@@ -117,18 +130,55 @@ const handleApi = async (req, res, pathname) => {
       return true;
     }
 
-    const matchedUser = management.users.find((user) => user.email === email);
+    const adminUser = await findAdminUserByEmail(email);
 
-    if (!matchedUser || password !== management.password) {
+    if (adminUser) {
+      if (!adminUser.is_active) {
+        sendJson(res, 403, { error: "Admin user is inactive." });
+        return true;
+      }
+
+      const passwordMatches = await bcrypt.compare(password, adminUser.password_hash);
+      if (!passwordMatches) {
+        sendJson(res, 401, { error: "Invalid management credentials." });
+        return true;
+      }
+
+      sendJson(res, 200, {
+        ok: true,
+        user: {
+          email: adminUser.email,
+          name: adminUser.name,
+          role: adminUser.role,
+        },
+        session: {
+          email: adminUser.email,
+          name: adminUser.name,
+          role: adminUser.role,
+        },
+      });
+      return true;
+    }
+
+    const adminUserCount = await countAdminUsers();
+    const fallbackUser = management.user;
+
+    if (adminUserCount > 0 || !fallbackUser || fallbackUser.email !== email || fallbackUser.password !== password) {
       sendJson(res, 401, { error: "Invalid management credentials." });
       return true;
     }
 
     sendJson(res, 200, {
       ok: true,
+      user: {
+        email: fallbackUser.email,
+        name: fallbackUser.name,
+        role: fallbackUser.role || "admin",
+      },
       session: {
-        email: matchedUser.email,
-        name: matchedUser.name,
+        email: fallbackUser.email,
+        name: fallbackUser.name,
+        role: fallbackUser.role || "admin",
       },
     });
     return true;
