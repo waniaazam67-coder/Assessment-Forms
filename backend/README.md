@@ -65,7 +65,7 @@ Supported export datasets:
 2. Update the MySQL credentials for your machine or deployment.
 3. Run `npm install` in `backend/`.
 4. Start the app with `npm start` from the project root.
-5. Open `http://127.0.0.1:3000/pages/index.html` for the forms or `http://127.0.0.1:3000/pages/admin-dashboard/index.html` for the admin login.
+5. Open `http://127.0.0.1:3000/pages/index.html` for the forms or `http://127.0.0.1:3000/pages/admin-dashboard/index.html` for the management login.
 
 ## Project structure
 

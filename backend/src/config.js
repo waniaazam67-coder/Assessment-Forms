@@ -20,10 +20,24 @@ module.exports = {
   legacyDbFile: path.join(backendDir, "data", "db.json"),
   host: process.env.HOST || "127.0.0.1",
   port: toPort(process.env.PORT, 4000),
-  admin: {
-    email: String(process.env.ADMIN_EMAIL || "admin@shehersaaz.com").trim().toLowerCase(),
-    password: String(process.env.ADMIN_PASSWORD || "Admin@2025"),
-    name: String(process.env.ADMIN_NAME || "Admin").trim() || "Admin",
+  management: {
+    password: String(process.env.MANAGEMENT_PASSWORD || process.env.ADMIN_PASSWORD || "Admin@2025"),
+    users: String(
+      process.env.MANAGEMENT_USERS ||
+        [
+          "beenish.kulsoom@shehersaaz.org.pk",
+          "sharafuddin@shehersaaz.org.pk",
+          "tailal.masood@shehersaaz.org.pk",
+          "m.waqas@shehersaaz.org.pk",
+        ].join(",")
+    )
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean)
+      .map((email) => ({
+        email,
+        name: email.split("@")[0].replace(/[._]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()),
+      })),
   },
   db: {
     host: process.env.DB_HOST || "localhost",

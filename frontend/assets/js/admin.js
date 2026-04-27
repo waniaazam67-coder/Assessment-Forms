@@ -1,6 +1,5 @@
-const AUTH_KEY = "shehersaaz-admin-dashboard-auth";
-const ADMIN_EMAIL = "admin@shehersaaz.com";
-const ADMIN_PASSWORD = "Admin@2025";
+const AUTH_KEY = "shehersaaz-management-dashboard-auth";
+const MANAGEMENT_EMAIL = "beenish.kulsoom@shehersaaz.org.pk";
 
 const generatedIdsStorageKey = "shehersaaz-generated-household-ids";
 const eligibleHouseholdsStorageKey = "shehersaaz-eligible-households";
@@ -911,7 +910,7 @@ function bootLoginPage() {
     }
 
     try {
-      const result = await apiJsonRequest("/api/admin/login", {
+      const result = await apiJsonRequest("/api/management/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -925,8 +924,8 @@ function bootLoginPage() {
       sessionStorage.setItem(
         AUTH_KEY,
         JSON.stringify({
-          email: result?.session?.email || email || ADMIN_EMAIL,
-          name: result?.session?.name || "Admin",
+          email: result?.session?.email || email || MANAGEMENT_EMAIL,
+          name: result?.session?.name || "Management User",
         })
       );
       window.location.href = "dashboard.html";
@@ -934,7 +933,7 @@ function bootLoginPage() {
       if (feedback) {
         feedback.textContent =
           error?.status === 401
-            ? "Invalid admin credentials."
+            ? "Invalid management credentials."
             : "Unable to reach the backend. Start the backend server and try again.";
       }
     } finally {
@@ -994,10 +993,10 @@ async function bootDashboardPage() {
   let usingBackend = false;
 
   if (name) {
-    name.textContent = session.name || "Admin";
+    name.textContent = session.name || "Management User";
   }
   if (email) {
-    email.textContent = session.email || ADMIN_EMAIL;
+    email.textContent = session.email || MANAGEMENT_EMAIL;
   }
 
   const setActivePage = (pageId) => {

@@ -1,6 +1,6 @@
 const http = require("node:http");
 const { URL } = require("node:url");
-const { frontendDir, host, port, admin } = require("./config");
+const { frontendDir, host, port, management } = require("./config");
 const { healthCheck, initializeDatabase, listHouseholds, listDedicatedFormRows, getHouseholdById, getFormSubmission, getSnapshot, upsertHousehold, submitForm } = require("./db");
 const { sendJson, sendText, sendDownload, readRequestBody, serveStatic } = require("./http");
 
@@ -107,7 +107,7 @@ const handleApi = async (req, res, pathname) => {
     return true;
   }
 
-  if (req.method === "POST" && pathname === "/api/admin/login") {
+  if (req.method === "POST" && (pathname === "/api/management/login" || pathname === "/api/admin/login")) {
     const body = await readRequestBody(req);
     const email = String(body?.email || "").trim().toLowerCase();
     const password = String(body?.password || "");
@@ -117,16 +117,18 @@ const handleApi = async (req, res, pathname) => {
       return true;
     }
 
-    if (email !== admin.email || password !== admin.password) {
-      sendJson(res, 401, { error: "Invalid admin credentials." });
+    const matchedUser = management.users.find((user) => user.email === email);
+
+    if (!matchedUser || password !== management.password) {
+      sendJson(res, 401, { error: "Invalid management credentials." });
       return true;
     }
 
     sendJson(res, 200, {
       ok: true,
       session: {
-        email: admin.email,
-        name: admin.name,
+        email: matchedUser.email,
+        name: matchedUser.name,
       },
     });
     return true;
