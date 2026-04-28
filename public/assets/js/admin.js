@@ -1,21 +1,11 @@
 const AUTH_KEY = "shehersaaz-management-dashboard-auth";
 const MANAGEMENT_EMAIL = "beenish.kulsoom@shehersaaz.org.pk";
-
-const generatedIdsStorageKey = "shehersaaz-generated-household-ids";
-const eligibleHouseholdsStorageKey = "shehersaaz-eligible-households";
-const submittedFormsStorageKey = "shehersaaz-submitted-forms";
-const seafResponsesStorageKey = "shehersaaz-seaf-responses";
-const householdRecordsStorageKey = "shehersaaz-household-records";
+const DASHBOARD_VERSION = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-04-28-02";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
-const frontendAssetVersion = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-04-28-01";
 
 const getConfiguredApiBaseUrl = () => {
   const metaTag = document.querySelector('meta[name="api-base-url"]');
-  const configuredValue =
-    window.__SHEHERSAAZ_API_BASE_URL__ ||
-    metaTag?.getAttribute("content") ||
-    "";
-
+  const configuredValue = window.__SHEHERSAAZ_API_BASE_URL__ || metaTag?.getAttribute("content") || "";
   return String(configuredValue || "").trim().replace(/\/+$/, "");
 };
 
@@ -26,42 +16,43 @@ const getApiBaseUrlCandidates = () => {
 
   const configuredBaseUrl = getConfiguredApiBaseUrl();
   const candidates = [];
-
   if (configuredBaseUrl) {
     candidates.push(configuredBaseUrl);
   }
-
   candidates.push(window.location.origin);
-
   return Array.from(new Set(candidates.filter(Boolean)));
 };
 
 const backendBaseUrls = getApiBaseUrlCandidates();
-const backendBaseUrl = backendBaseUrls[0];
-
 window.__SHEHERSAAZ_APP__?.registerServiceWorker?.();
 
 function readJson(storage, key, fallback) {
   try {
     const value = storage.getItem(key);
-    if (!value) {
-      return fallback;
-    }
-
-    const parsed = JSON.parse(value);
-    return parsed || fallback;
+    return value ? JSON.parse(value) : fallback;
   } catch (error) {
     return fallback;
   }
 }
 
-async function apiJsonRequest(path) {
-  const requestOptions = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+function getAdminSession() {
+  return readJson(sessionStorage, AUTH_KEY, null);
+}
+
+function getAdminAuthHeaders(extraHeaders = {}) {
+  const session = getAdminSession();
+  const token = String(session?.token || "").trim();
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extraHeaders,
+  };
+}
+
+async function apiJsonRequest(path, requestOptions = {}) {
   const headers = {
     Accept: "application/json",
-    ...(requestOptions.headers || {}),
+    ...getAdminAuthHeaders(requestOptions.headers || {}),
   };
-
   let lastError = null;
 
   for (const baseUrl of backendBaseUrls) {
@@ -74,22 +65,67 @@ async function apiJsonRequest(path) {
 
       if (!response.ok) {
         let message = `Request failed with status ${response.status}`;
-
         try {
           const payload = await response.json();
           if (payload?.error) {
             message = payload.error;
           }
         } catch (error) {
-          // Ignore JSON parse failures and keep the default message.
+          // Keep default message if error body is not JSON.
         }
-
         const requestError = new Error(message);
         requestError.status = response.status;
         throw requestError;
       }
 
       return response.json();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("Unable to reach the backend API.");
+}
+
+async function apiDownloadRequest(path, fallbackFilename) {
+  let lastError = null;
+
+  for (const baseUrl of backendBaseUrls) {
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: "GET",
+        cache: "no-store",
+        headers: getAdminAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        let message = `Request failed with status ${response.status}`;
+        try {
+          const payload = await response.json();
+          if (payload?.error) {
+            message = payload.error;
+          }
+        } catch (error) {
+          // Keep default message if error body is not JSON.
+        }
+        const requestError = new Error(message);
+        requestError.status = response.status;
+        throw requestError;
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const filenameMatch = disposition.match(/filename="([^"]+)"/i);
+      const filename = filenameMatch?.[1] || fallbackFilename;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      return filename;
     } catch (error) {
       lastError = error;
     }
@@ -107,778 +143,324 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function normalizeStatus(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function formatDate(value, options = {}) {
+function formatDateTime(value) {
   if (!value) {
     return "-";
   }
-
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return String(value);
   }
-
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    ...options,
-  }).format(date);
-}
-
-function formatDateTime(value) {
-  if (!value) {
-    return "Not available";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-
   return new Intl.DateTimeFormat("en-GB", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
 }
 
-function sortRecords(records) {
-  return [...records].sort((left, right) => {
-    if (left.surveyDate && right.surveyDate && left.surveyDate !== right.surveyDate) {
-      return String(right.surveyDate).localeCompare(String(left.surveyDate));
-    }
-
-    return String(right.householdId || "").localeCompare(String(left.householdId || ""));
-  });
-}
-
-function buildRecordsFromSnapshot(snapshot = {}) {
-  const households = Array.isArray(snapshot.households) ? snapshot.households : [];
-  const submittedForms = snapshot.submittedForms && typeof snapshot.submittedForms === "object" ? snapshot.submittedForms : {};
-  const seafResponses = snapshot.seafResponses && typeof snapshot.seafResponses === "object" ? snapshot.seafResponses : {};
-  const generatedIds = Array.isArray(snapshot.generatedIds) ? snapshot.generatedIds : [];
-  const map = new Map();
-
-  households.forEach((record) => {
-    if (!record?.householdId) {
-      return;
-    }
-
-    const submission = submittedForms[record.householdId] || {};
-    map.set(record.householdId, {
-      householdId: record.householdId,
-      headName: record.headName || submission.headName || "-",
-      surveyDate: record.surveyDate || "",
-      city: record.city || "",
-      ucnc: record.ucnc || "",
-      address: record.address || "",
-      catchmentArea: record.catchmentArea || "",
-      tankSpace: record.tankSpace || "",
-      cmoName: record.cmoName || record.enumeratorName || "",
-      engineerName: record.engineerName || "",
-      engineerEmploymentCode: record.engineerEmploymentCode || "",
-      eligibilityStatus: record.eligibilityStatus || record.status || "",
-      updatedAt: record.updatedAt || submission.updatedAt || null,
-      status: {
-        household: submission.household || "Pending",
-        seaf: submission.seaf || (record.stageStatus?.seaf ? "Submitted" : "Pending"),
-        engineering: submission.engineering || (record.stageStatus?.engineering ? "Submitted" : "Pending"),
-        inventory: submission.inventory || (record.stageStatus?.inventory ? "Submitted" : "Pending"),
-      },
-      stageStatus: {
-        seaf: Boolean(record.stageStatus?.seaf || submission.seaf === "Submitted"),
-        engineering: Boolean(record.stageStatus?.engineering || submission.engineering === "Submitted"),
-        inventory: Boolean(record.stageStatus?.inventory || submission.inventory === "Submitted"),
-      },
-    });
-  });
-
-  Object.entries(submittedForms).forEach(([householdId, record]) => {
-    if (!householdId) {
-      return;
-    }
-
-    const existing = map.get(householdId) || { householdId };
-    map.set(householdId, {
-      ...existing,
-      householdId,
-      headName: existing.headName || record.headName || "-",
-      eligibilityStatus: existing.eligibilityStatus || "",
-      updatedAt: existing.updatedAt || record.updatedAt || null,
-      status: {
-        household: record.household || existing.status?.household || "Pending",
-        seaf: record.seaf || existing.status?.seaf || "Pending",
-        engineering: record.engineering || existing.status?.engineering || "Pending",
-        inventory: record.inventory || existing.status?.inventory || "Pending",
-      },
-      stageStatus: {
-        seaf: Boolean(existing.stageStatus?.seaf || record.seaf === "Submitted"),
-        engineering: Boolean(existing.stageStatus?.engineering || record.engineering === "Submitted"),
-        inventory: Boolean(existing.stageStatus?.inventory || record.inventory === "Submitted"),
-      },
-    });
-  });
-
-  Object.keys(seafResponses).forEach((householdId) => {
-    if (!map.has(householdId)) {
-      map.set(householdId, {
-        householdId,
-        headName: "-",
-        surveyDate: "",
-        city: "",
-        ucnc: "",
-        address: "",
-        catchmentArea: "",
-        tankSpace: "",
-        cmoName: "",
-        engineerName: "",
-        engineerEmploymentCode: "",
-        eligibilityStatus: "",
-        updatedAt: seafResponses[householdId]?.submittedAt || null,
-        status: {
-          household: "Pending",
-          seaf: "Submitted",
-          engineering: "Pending",
-          inventory: "Pending",
-        },
-        stageStatus: {
-          seaf: true,
-          engineering: false,
-          inventory: false,
-        },
-      });
-    }
-  });
-
-  generatedIds.forEach((householdId) => {
-    if (typeof householdId !== "string" || !householdId.trim() || map.has(householdId)) {
-      return;
-    }
-
-    map.set(householdId, {
-      householdId,
-      headName: "-",
-      surveyDate: "",
-      city: "",
-      ucnc: "",
-      address: "",
-      catchmentArea: "",
-      tankSpace: "",
-      cmoName: "",
-      engineerName: "",
-      engineerEmploymentCode: "",
-      eligibilityStatus: "",
-      updatedAt: null,
-      status: {
-        household: "Pending",
-        seaf: "Pending",
-        engineering: "Pending",
-        inventory: "Pending",
-      },
-      stageStatus: {
-        seaf: false,
-        engineering: false,
-        inventory: false,
-      },
-    });
-  });
-
-  return sortRecords(Array.from(map.values()));
-}
-
-function buildRecordsFromLocalStorage() {
-  const storedRecords = readJson(localStorage, householdRecordsStorageKey, []);
-  const generatedIds = readJson(localStorage, generatedIdsStorageKey, []);
-  const eligible = readJson(localStorage, eligibleHouseholdsStorageKey, []);
-  const submitted = readJson(localStorage, submittedFormsStorageKey, {});
-  const seafResponses = readJson(localStorage, seafResponsesStorageKey, {});
-  const eligibleIds = new Set(
-    eligible
-      .map((household) => household?.householdId)
-      .filter((householdId) => typeof householdId === "string" && householdId.trim())
-  );
-
-  const map = new Map();
-
-  storedRecords.forEach((record) => {
-    if (!record?.householdId) {
-      return;
-    }
-
-    const submission = submitted[record.householdId] || {};
-    map.set(record.householdId, {
-      householdId: record.householdId,
-      headName: record.headName || submission.headName || "-",
-      surveyDate: record.surveyDate || "",
-      city: record.city || "",
-      ucnc: record.ucnc || "",
-      address: record.address || "",
-      catchmentArea: record.catchmentArea || "",
-      tankSpace: record.tankSpace || "",
-      cmoName: record.cmoName || record.enumeratorName || "",
-      engineerName: record.engineerName || "",
-      engineerEmploymentCode: record.engineerEmploymentCode || "",
-      eligibilityStatus: record.status || record.eligibilityStatus || (eligibleIds.has(record.householdId) ? "passed" : "failed"),
-      updatedAt: record.updatedAt || submission.updatedAt || null,
-      status: {
-        household: submission.household || "Pending",
-        seaf: submission.seaf || "Pending",
-        engineering: submission.engineering || "Pending",
-        inventory: submission.inventory || "Pending",
-      },
-      stageStatus: {
-        seaf: Boolean(record.stageStatus?.seaf || submission.seaf === "Submitted"),
-        engineering: Boolean(record.stageStatus?.engineering || submission.engineering === "Submitted"),
-        inventory: Boolean(record.stageStatus?.inventory || submission.inventory === "Submitted"),
-      },
-    });
-  });
-
-  eligible.forEach((household) => {
-    if (!household?.householdId) {
-      return;
-    }
-
-    const existing = map.get(household.householdId) || { householdId: household.householdId };
-    map.set(household.householdId, {
-      ...existing,
-      householdId: household.householdId,
-      headName: existing.headName || household.headName || "-",
-      eligibilityStatus: existing.eligibilityStatus || "passed",
-    });
-  });
-
-  Object.entries(submitted).forEach(([householdId, record]) => {
-    if (!householdId) {
-      return;
-    }
-
-    const existing = map.get(householdId) || { householdId };
-    map.set(householdId, {
-      ...existing,
-      householdId,
-      headName: existing.headName || record.headName || "-",
-      engineerName: existing.engineerName || record.engineerName || "",
-      updatedAt: existing.updatedAt || record.updatedAt || null,
-      status: {
-        household: record.household || existing.status?.household || "Pending",
-        seaf: record.seaf || existing.status?.seaf || "Pending",
-        engineering: record.engineering || existing.status?.engineering || "Pending",
-        inventory: record.inventory || existing.status?.inventory || "Pending",
-      },
-      stageStatus: {
-        seaf: Boolean(existing.stageStatus?.seaf || record.seaf === "Submitted"),
-        engineering: Boolean(existing.stageStatus?.engineering || record.engineering === "Submitted"),
-        inventory: Boolean(existing.stageStatus?.inventory || record.inventory === "Submitted"),
-      },
-    });
-  });
-
-  Object.keys(seafResponses).forEach((householdId) => {
-    if (!map.has(householdId)) {
-      map.set(householdId, {
-        householdId,
-        headName: "-",
-        surveyDate: "",
-        city: "",
-        ucnc: "",
-        address: "",
-        catchmentArea: "",
-        tankSpace: "",
-        cmoName: "",
-        engineerName: "",
-        engineerEmploymentCode: "",
-        eligibilityStatus: eligibleIds.has(householdId) ? "passed" : "failed",
-        updatedAt: seafResponses[householdId]?.submittedAt || null,
-        status: {
-          household: "Pending",
-          seaf: "Submitted",
-          engineering: "Pending",
-          inventory: "Pending",
-        },
-        stageStatus: {
-          seaf: true,
-          engineering: false,
-          inventory: false,
-        },
-      });
-    }
-  });
-
-  generatedIds.forEach((householdId) => {
-    if (typeof householdId !== "string" || !householdId.trim() || map.has(householdId)) {
-      return;
-    }
-
-    map.set(householdId, {
-      householdId,
-      headName: "-",
-      surveyDate: "",
-      city: "",
-      ucnc: "",
-      address: "",
-      catchmentArea: "",
-      tankSpace: "",
-      cmoName: "",
-      engineerName: "",
-      engineerEmploymentCode: "",
-      eligibilityStatus: eligibleIds.has(householdId) ? "passed" : "failed",
-      updatedAt: submitted[householdId]?.updatedAt || null,
-      status: {
-        household: submitted[householdId]?.household || "Pending",
-        seaf: submitted[householdId]?.seaf || "Pending",
-        engineering: submitted[householdId]?.engineering || "Pending",
-        inventory: submitted[householdId]?.inventory || "Pending",
-      },
-      stageStatus: {
-        seaf: Boolean(submitted[householdId]?.seaf === "Submitted"),
-        engineering: Boolean(submitted[householdId]?.engineering === "Submitted"),
-        inventory: Boolean(submitted[householdId]?.inventory === "Submitted"),
-      },
-    });
-  });
-
-  return sortRecords(Array.from(map.values()));
-}
-
-function getOverviewStats(records) {
-  const totalAssessed = records.length;
-  const eligibleCount = records.filter((record) => normalizeStatus(record?.eligibilityStatus) === "passed").length;
-  const notEligibleCount = records.filter((record) => normalizeStatus(record?.eligibilityStatus) === "failed").length;
-  const seafDone = records.filter((record) => record?.stageStatus?.seaf).length;
-  const engineeringDone = records.filter((record) => record?.stageStatus?.engineering).length;
-  const readyCount = records.filter((record) => record?.stageStatus?.seaf && record?.stageStatus?.engineering && record?.stageStatus?.inventory).length;
-  const totalSafe = totalAssessed || 1;
-
-  return [
-    {
-      label: "Total households assessed",
-      value: totalAssessed,
-      subtext: `+${Math.max(0, totalAssessed - eligibleCount - notEligibleCount)} this week`,
-      subtextTone: "positive",
-      progress: 100,
-      progressTone: "blue",
-    },
-    {
-      label: "Eligible households",
-      value: eligibleCount,
-      subtext: `${Math.round((eligibleCount / totalSafe) * 100)}% of assessed`,
-      progress: Math.round((eligibleCount / totalSafe) * 100),
-      progressTone: "green",
-    },
-    {
-      label: "Not eligible",
-      value: notEligibleCount,
-      subtext: `${Math.round((notEligibleCount / totalSafe) * 100)}% of assessed`,
-      progress: Math.round((notEligibleCount / totalSafe) * 100),
-      progressTone: "red",
-    },
-    {
-      label: "SEAF done",
-      value: seafDone,
-      subtext: `${Math.round((seafDone / totalSafe) * 100)}% of assessed`,
-      progress: Math.round((seafDone / totalSafe) * 100),
-      progressTone: "blue",
-    },
-    {
-      label: "Engineering done",
-      value: engineeringDone,
-      subtext: `${Math.round((engineeringDone / totalSafe) * 100)}% of assessed`,
-      progress: Math.round((engineeringDone / totalSafe) * 100),
-      progressTone: "violet",
-    },
-    {
-      label: "Ready for RWHU installation",
-      value: readyCount,
-      subtext: `${Math.round((readyCount / totalSafe) * 100)}% of assessed`,
-      progress: Math.round((readyCount / totalSafe) * 100),
-      progressTone: "teal",
-    },
-  ];
-}
-
-function countSubmitted(record) {
-  const status = record.status || {};
-  const seaf = record.stageStatus?.seaf || status.seaf === "Submitted";
-  const engineering = record.stageStatus?.engineering || status.engineering === "Submitted";
-  const inventory = record.stageStatus?.inventory || status.inventory === "Submitted";
-
-  return {
-    seaf,
-    engineering,
-    inventory,
-    complete: seaf && engineering && inventory,
-  };
-}
-
-function metricIcon(kind) {
-  const icons = {
-    households: `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 10.5 12 4l9 6.5" />
-        <path d="M5 9.5V20h14V9.5" />
-        <path d="M9 20v-6h6v6" />
-      </svg>
-    `,
-    eligible: `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2l3 6 6 .9-4.5 4.4 1.1 6.4L12 16.8 6.4 19.7l1.1-6.4L3 8.9 9 8z" />
-      </svg>
-    `,
-    rejected: `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="9" />
-        <path d="m9 9 6 6" />
-        <path d="m15 9-6 6" />
-      </svg>
-    `,
-    seaf: `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M7 4h10v16H7z" />
-        <path d="M9 8h6" />
-        <path d="M9 12h6" />
-        <path d="M9 16h4" />
-      </svg>
-    `,
-    engineering: `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14.5 4.5a4 4 0 0 1 5 5L10 19l-5 1 1-5 9.5-10.5Z" />
-        <path d="m13 6 5 5" />
-      </svg>
-    `,
-    ready: `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 12.5 9 18 20 7" />
-        <path d="M12 3a9 9 0 1 1-9 9" />
-      </svg>
-    `,
-  };
-
-  return icons[kind] || icons.households;
-}
-
-function getChipTone(value) {
-  const normalized = normalizeStatus(value);
-
-  if (["submitted", "passed", "connected", "healthy", "complete"].includes(normalized)) {
+function getStatusTone(label) {
+  const normalized = String(label || "").trim().toLowerCase();
+  if (normalized === "submitted" || normalized === "inserted") {
     return "done";
   }
-
-  if (["failed", "disconnected", "offline", "error"].includes(normalized)) {
+  if (normalized === "pending sync" || normalized === "pending" || normalized === "syncing") {
+    return "pending";
+  }
+  if (normalized === "failed sync" || normalized === "failed") {
     return "failed";
   }
-
-  return "pending";
+  return "neutral";
 }
 
-function renderMetrics(container, records) {
-  if (!container) {
-    return;
-  }
-
-  container.innerHTML = "";
-  getOverviewStats(records).forEach((metric) => {
-    const item = document.createElement("article");
-    item.className = "admin-overview-card admin-metric";
-    item.innerHTML = `
-      <span class="admin-metric__label">${escapeHtml(metric.label)}</span>
-      <strong class="admin-metric__value">${escapeHtml(metric.value)}</strong>
-      <span class="admin-metric__subtext${metric.subtextTone === "positive" ? " admin-metric__subtext--positive" : ""}">${escapeHtml(metric.subtext || "")}</span>
-    `;
-    container.append(item);
-  });
+function isFullyCompleted(household) {
+  return household?.stages?.householdInfo?.submitted &&
+    household?.stages?.seaf?.submitted &&
+    household?.stages?.engineering?.submitted &&
+    household?.stages?.inventory?.submitted;
 }
 
-function renderPipeline(container, records) {
-  if (!container) {
-    return;
-  }
-
-  const stats = getOverviewStats(records);
-  const rows = [
-    { label: "Total assessed", value: stats[0]?.value || 0, progress: 100, tone: "blue" },
-    { label: "Eligible households", value: stats[1]?.value || 0, progress: stats[1]?.progress || 0, tone: "green" },
-    { label: "SEAF completed", value: stats[3]?.value || 0, progress: stats[3]?.progress || 0, tone: "blue" },
-    { label: "Engineering done", value: stats[4]?.value || 0, progress: stats[4]?.progress || 0, tone: "violet" },
-    { label: "Ready for RWHU install", value: stats[5]?.value || 0, progress: stats[5]?.progress || 0, tone: "teal" },
-  ];
-
-  container.innerHTML = rows
-    .map(
-      (row) => `
-        <div class="admin-pipeline__row">
-          <strong>${escapeHtml(row.label)}</strong>
-          <div class="admin-progress" aria-hidden="true">
-            <div class="admin-progress__bar admin-progress__bar--${escapeHtml(row.tone)}" style="width: ${Math.max(0, Math.min(100, Number(row.progress) || 0))}%"></div>
-          </div>
-          <span class="admin-pipeline__value">${escapeHtml(row.value)}</span>
-        </div>
-      `
-    )
-    .join("");
+function getHouseholdSearchText(household) {
+  return [household.householdId, household.headName, household.location, household.phone]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 }
 
-function renderDataTable(container, records, filters = {}) {
-  if (!container) {
-    return;
-  }
+function filterHouseholds(households, searchTerm = "", filterValue = "all") {
+  const normalizedSearch = String(searchTerm || "").trim().toLowerCase();
+  const normalizedFilter = String(filterValue || "all").trim().toLowerCase();
 
-  const locationTerm = normalizeStatus(filters.location);
-  const statusTerm = normalizeStatus(filters.status);
-  const nameTerm = normalizeStatus(filters.name);
-  const stageTerm = normalizeStatus(filters.stage);
-  const startDate = normalizeStatus(filters.startDate);
-  const endDate = normalizeStatus(filters.endDate);
-
-  const filtered = records.filter((record) => {
-    const location = `${record.city || ""} ${record.ucnc || ""} ${record.address || ""}`.toLowerCase();
-    const names = `${record.cmoName || ""} ${record.engineerName || ""}`.toLowerCase();
-    const recordStatus = normalizeStatus(record.eligibilityStatus);
-    const recordDate = normalizeStatus(record.surveyDate);
-    const stageStatus = record.stageStatus || {};
-
-    const matchesLocation = !locationTerm || location.includes(locationTerm);
-    const matchesStatus = !statusTerm || recordStatus === statusTerm;
-    const matchesName = !nameTerm || names.includes(nameTerm);
-    const matchesStart = !startDate || !recordDate || recordDate >= startDate;
-    const matchesEnd = !endDate || !recordDate || recordDate <= endDate;
-    const matchesStage =
-      !stageTerm ||
-      (stageTerm === "seaf" && stageStatus.seaf) ||
-      (stageTerm === "engineering" && stageStatus.engineering) ||
-      (stageTerm === "inventory" && stageStatus.inventory);
-
-    return matchesLocation && matchesStatus && matchesName && matchesStart && matchesEnd && matchesStage;
-  });
-
-  container.innerHTML = "";
-
-  if (filtered.length === 0) {
-    const row = document.createElement("tr");
-    row.innerHTML = `<td colspan="5" class="admin-table__empty">No households match the selected filters.</td>`;
-    container.append(row);
-    return;
-  }
-
-  filtered.forEach((record) => {
-    const row = document.createElement("tr");
-    const location = [record.city, record.ucnc].filter(Boolean).join(", ") || "-";
-    const isPassed = normalizeStatus(record.eligibilityStatus) === "passed";
-    const statusLabel = isPassed ? "Eligible" : "Not eligible";
-    const headLabel = record.headName || "-";
-
-    row.innerHTML = `
-      <td>${escapeHtml(record.householdId || "-")}</td>
-      <td>
-        <strong class="admin-table__primary">${escapeHtml(headLabel)}</strong>
-        <small class="admin-table__meta">${escapeHtml(record.address || "Address not captured")}</small>
-      </td>
-      <td>${escapeHtml(location)}</td>
-      <td>${escapeHtml(record.tankSpace || "-")}</td>
-      <td><span class="admin-chip admin-chip--${isPassed ? "green" : "failed"}">${statusLabel}</span></td>
-    `;
-    container.append(row);
-  });
-}
-
-function renderHouseholdSummary(container, records) {
-  if (!container) {
-    return;
-  }
-
-  const completed = records.filter((record) => countSubmitted(record).complete).length;
-  const pending = records.filter((record) => !countSubmitted(record).complete).length;
-  const withCatchment = records.filter((record) => String(record.catchmentArea || "").trim()).length;
-  const withTankSpace = records.filter((record) => String(record.tankSpace || "").trim()).length;
-
-  const items = [
-    { label: "Households in database", value: records.length },
-    { label: "All three forms submitted", value: completed },
-    { label: "Need follow-up", value: pending },
-    { label: "Catchment captured", value: withCatchment },
-    { label: "Tank space captured", value: withTankSpace },
-  ];
-
-  container.innerHTML = items
-    .map(
-      (item) => `
-        <article class="admin-summary-card">
-          <strong>${escapeHtml(item.value)}</strong>
-          <span>${escapeHtml(item.label)}</span>
-        </article>
-      `
-    )
-    .join("");
-}
-
-function renderHouseholdList(container, records, searchTerm = "") {
-  if (!container) {
-    return;
-  }
-
-  const normalizedSearch = normalizeStatus(searchTerm);
-  const filtered = records.filter((record) => {
-    if (!normalizedSearch) {
-      return true;
+  return households.filter((household) => {
+    if (normalizedSearch && !getHouseholdSearchText(household).includes(normalizedSearch)) {
+      return false;
     }
-
-    const haystack = [
-      record.householdId,
-      record.headName,
-      record.city,
-      record.ucnc,
-      record.address,
-      record.cmoName,
-      record.engineerName,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    return haystack.includes(normalizedSearch);
+    if (normalizedFilter === "fully-completed") {
+      return isFullyCompleted(household);
+    }
+    if (normalizedFilter === "incomplete") {
+      return !isFullyCompleted(household);
+    }
+    if (normalizedFilter === "seaf-pending") {
+      return !household?.stages?.seaf?.submitted;
+    }
+    if (normalizedFilter === "engineering-pending") {
+      return !household?.stages?.engineering?.submitted;
+    }
+    if (normalizedFilter === "inventory-pending") {
+      return !household?.stages?.inventory?.submitted;
+    }
+    return true;
   });
+}
 
-  if (filtered.length === 0) {
-    container.innerHTML = `<div class="admin-placeholder">No household records match that search.</div>`;
+function renderSummaryCards(container, summary = {}) {
+  if (!container) {
     return;
   }
 
-  container.innerHTML = filtered
-    .map((record) => {
-      const eligibility = normalizeStatus(record.eligibilityStatus) === "passed" ? "Eligible" : normalizeStatus(record.eligibilityStatus) === "failed" ? "Not eligible" : "Pending";
-      const readiness = record.stageStatus?.inventory && record.stageStatus?.engineering && record.stageStatus?.seaf ? "Yes" : "No";
-      const zone = [record.city, record.ucnc].filter(Boolean).join(", ") || "Area not captured";
-      const engineer = record.engineerName || "Not assigned";
-      const enumerator = record.cmoName || "Not captured";
+  const cards = [
+    ["Total Households", summary.totalHouseholds || 0],
+    ["Household Info Submitted", summary.householdInfoSubmitted || 0],
+    ["SEAF Submitted", summary.seafSubmitted || 0],
+    ["Engineering Submitted", summary.engineeringSubmitted || 0],
+    ["Inventory Submitted", summary.inventorySubmitted || 0],
+    ["Fully Completed", summary.fullyCompleted || 0],
+    ["Incomplete", summary.incomplete || 0],
+  ];
 
-      return `
-        <article class="admin-household-card">
-          <div class="admin-household-card__header">
-            <div>
-              <h4>${escapeHtml(record.householdId || "-")}</h4>
-              <p class="admin-household-card__id">${escapeHtml(record.updatedAt ? `Updated ${formatDate(record.updatedAt)}` : "No recent update")}</p>
-            </div>
-            <span class="admin-chip admin-chip--${getChipTone(eligibility)}">${escapeHtml(eligibility)}</span>
-          </div>
-          <div class="admin-household-card__grid">
-            <div class="admin-household-card__item">
-              <span>Head of household</span>
-              <strong>${escapeHtml(record.headName || "Not captured")}</strong>
-            </div>
-            <div class="admin-household-card__item">
-              <span>Area / Zone</span>
-              <strong>${escapeHtml(zone)}</strong>
-            </div>
-            <div class="admin-household-card__item">
-              <span>Tank size</span>
-              <strong>${escapeHtml(record.tankSpace || "N/A")}</strong>
-            </div>
-            <div class="admin-household-card__item">
-              <span>Enumerator</span>
-              <strong>${escapeHtml(enumerator)}</strong>
-            </div>
-            <div class="admin-household-card__item">
-              <span>Engineer</span>
-              <strong>${escapeHtml(engineer)}</strong>
-            </div>
-            <div class="admin-household-card__item">
-              <span>RWHU ready</span>
-              <strong>${escapeHtml(readiness)}</strong>
-            </div>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
+  container.innerHTML = cards.map(
+    ([label, value]) => `
+      <article class="admin-overview-card admin-metric admin-metric--compact">
+        <span class="admin-metric__label">${escapeHtml(label)}</span>
+        <strong class="admin-metric__value">${escapeHtml(value)}</strong>
+      </article>
+    `
+  ).join("");
 }
 
-function buildRecentActivity(snapshot = {}) {
-  const formSubmissions = snapshot.formSubmissions && typeof snapshot.formSubmissions === "object" ? snapshot.formSubmissions : {};
-  const items = [];
+function renderHouseholdTable(container, households, onViewDetails) {
+  if (!container) {
+    return;
+  }
 
-  Object.entries(formSubmissions).forEach(([householdId, forms]) => {
-    Object.entries(forms || {}).forEach(([formKey, entry]) => {
-      items.push({
-        householdId,
-        formKey,
-        submittedAt: entry?.submittedAt || null,
-      });
+  if (!households.length) {
+    container.innerHTML = `<tr><td colspan="10" class="admin-table__empty">No households found.</td></tr>`;
+    return;
+  }
+
+  container.innerHTML = households.map((household) => `
+    <tr>
+      <td>${escapeHtml(household.householdId || "-")}</td>
+      <td>${escapeHtml(household.headName || "-")}</td>
+      <td>${escapeHtml(household.location || "-")}</td>
+      <td>${escapeHtml(household.phone || "-")}</td>
+      <td><span class="admin-chip admin-chip--${getStatusTone(household.stages.householdInfo.label)}">${escapeHtml(household.stages.householdInfo.label)}</span></td>
+      <td><span class="admin-chip admin-chip--${getStatusTone(household.stages.seaf.label)}">${escapeHtml(household.stages.seaf.label)}</span></td>
+      <td><span class="admin-chip admin-chip--${getStatusTone(household.stages.engineering.label)}">${escapeHtml(household.stages.engineering.label)}</span></td>
+      <td><span class="admin-chip admin-chip--${getStatusTone(household.stages.inventory.label)}">${escapeHtml(household.stages.inventory.label)}</span></td>
+      <td>${escapeHtml(formatDateTime(household.updatedAt))}</td>
+      <td><button type="button" class="admin-button admin-button--ghost admin-button--small" data-household-details="${escapeHtml(household.householdId)}">View Details</button></td>
+    </tr>
+  `).join("");
+
+  container.querySelectorAll("[data-household-details]").forEach((button) => {
+    button.addEventListener("click", () => {
+      onViewDetails(button.getAttribute("data-household-details") || "");
     });
   });
-
-  return items
-    .sort((left, right) => String(right.submittedAt || "").localeCompare(String(left.submittedAt || "")))
-    .slice(0, 10);
 }
 
-function renderSystemStatus(container, records, snapshot, health, usingBackend) {
+function renderDetailsPanel(container, household) {
   if (!container) {
     return;
   }
 
-  const recentActivityCount = buildRecentActivity(snapshot).length;
-  const items = [
-    {
-      label: "Backend status",
-      value: usingBackend ? "Connected" : "Disconnected",
-    },
-    {
-      label: "Database health",
-      value: health?.ok ? "Healthy" : usingBackend ? "Unavailable" : "Offline",
-    },
-    {
-      label: "Last snapshot sync",
-      value: usingBackend ? formatDateTime(snapshot?.updatedAt) : "Not available",
-    },
-    {
-      label: "Households loaded",
-      value: String(records.length),
-    },
-    {
-      label: "Generated household IDs",
-      value: String(Array.isArray(snapshot?.generatedIds) ? snapshot.generatedIds.length : 0),
-    },
-    {
-      label: "Recent submitted forms shown",
-      value: String(recentActivityCount),
-    },
+  if (!household) {
+    container.innerHTML = `<div class="admin-placeholder">No household found.</div>`;
+    return;
+  }
+
+  const stageCard = (label, stage) => `
+    <article class="admin-summary-card">
+      <strong>${escapeHtml(label)}</strong>
+      <span><span class="admin-chip admin-chip--${getStatusTone(stage?.label)}">${escapeHtml(stage?.label || "Not Submitted")}</span></span>
+      <span>Submitted at: ${escapeHtml(formatDateTime(stage?.submittedAt))}</span>
+    </article>
+  `;
+
+  container.innerHTML = `
+    <div class="admin-details-grid">
+      <article class="admin-summary-card">
+        <strong>${escapeHtml(household.householdId || "-")}</strong>
+        <span>Household ID</span>
+      </article>
+      <article class="admin-summary-card">
+        <strong>${escapeHtml(household.headName || "-")}</strong>
+        <span>Head Name</span>
+      </article>
+      <article class="admin-summary-card">
+        <strong>${escapeHtml(household.location || "-")}</strong>
+        <span>Location</span>
+      </article>
+      <article class="admin-summary-card">
+        <strong>${escapeHtml(household.phone || "-")}</strong>
+        <span>Phone</span>
+      </article>
+    </div>
+    <div class="admin-details-stages">
+      ${stageCard("Household Information", household.stages.householdInfo)}
+      ${stageCard("SEAF", household.stages.seaf)}
+      ${stageCard("Engineering", household.stages.engineering)}
+      ${stageCard("Inventory", household.stages.inventory)}
+    </div>
+  `;
+}
+
+function downloadCsv(filename, households) {
+  const headers = [
+    "Household ID",
+    "Head Name",
+    "Location",
+    "Phone",
+    "Household Info Status",
+    "SEAF Status",
+    "Engineering Status",
+    "Inventory Status",
+    "Last Updated",
   ];
 
-  container.innerHTML = items
-    .map(
-      (item) => `
-        <article class="admin-role-item">
-          <strong>${escapeHtml(item.label)}</strong>
-          <span class="admin-chip admin-chip--${getChipTone(item.value)}">${escapeHtml(item.value)}</span>
-        </article>
-      `
-    )
-    .join("");
+  const escapeCsv = (value) => `"${String(value ?? "").replace(/"/g, "\"\"")}"`;
+  const lines = [
+    headers.map(escapeCsv).join(","),
+    ...households.map((household) => [
+      household.householdId || "",
+      household.headName || "",
+      household.location || "",
+      household.phone || "",
+      household.stages.householdInfo.label || "",
+      household.stages.seaf.label || "",
+      household.stages.engineering.label || "",
+      household.stages.inventory.label || "",
+      household.updatedAt || "",
+    ].map(escapeCsv).join(",")),
+  ];
+
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
-function renderRecentActivity(container, snapshot = {}) {
+function renderAdminUsers(container, users = []) {
   if (!container) {
     return;
   }
 
-  const activity = buildRecentActivity(snapshot);
-  if (activity.length === 0) {
-    container.innerHTML = `<div class="admin-placeholder">No form submissions have reached the database yet.</div>`;
+  if (!users.length) {
+    container.innerHTML = `<tr><td colspan="5" class="admin-table__empty">No admin users found.</td></tr>`;
     return;
   }
 
-  container.innerHTML = activity
-    .map(
-      (item) => `
-        <article class="admin-activity-item">
-          <strong>${escapeHtml(item.householdId)}</strong>
-          <small>${escapeHtml(item.formKey.toUpperCase())} form submission</small>
-          <span>${escapeHtml(formatDateTime(item.submittedAt))}</span>
-        </article>
-      `
-    )
-    .join("");
+  container.innerHTML = users.map((user) => `
+    <tr>
+      <td>${escapeHtml(user.name || "-")}</td>
+      <td>${escapeHtml(user.email || "-")}</td>
+      <td>${escapeHtml(user.role || "-")}</td>
+      <td><span class="admin-chip admin-chip--${user.isActive ? "done" : "failed"}">${user.isActive ? "Active" : "Inactive"}</span></td>
+      <td>${escapeHtml(formatDateTime(user.createdAt))}</td>
+    </tr>
+  `).join("");
+}
+
+function renderSyncMonitoring(summaryContainer, tableBody, placeholder, payload) {
+  if (!summaryContainer || !tableBody || !placeholder) {
+    return;
+  }
+
+  const summary = payload?.summary || {};
+  const attempts = Array.isArray(payload?.recentAttempts) ? payload.recentAttempts : [];
+  const hasCentralLog = Boolean(summary.hasCentralLog);
+
+  if (!hasCentralLog) {
+    summaryContainer.innerHTML = "";
+    tableBody.innerHTML = "";
+    placeholder.hidden = false;
+    placeholder.textContent = "This app currently stores offline sync queue data on field devices. No central backend sync log is available yet.";
+    return;
+  }
+
+  placeholder.hidden = true;
+  summaryContainer.innerHTML = [
+    ["Pending Sync", summary.pendingCount || 0],
+    ["Failed Sync", summary.failedCount || 0],
+    ["Submitted", summary.submittedCount || 0],
+  ].map(([label, value]) => `
+    <article class="admin-summary-card">
+      <strong>${escapeHtml(value)}</strong>
+      <span>${escapeHtml(label)}</span>
+    </article>
+  `).join("");
+
+  tableBody.innerHTML = attempts.length ? attempts.map((item) => `
+    <tr>
+      <td>${escapeHtml(item.localSubmissionId || "-")}</td>
+      <td>${escapeHtml(item.householdId || "-")}</td>
+      <td>${escapeHtml(item.formType || "-")}</td>
+      <td><span class="admin-chip admin-chip--${getStatusTone(item.syncStatus)}">${escapeHtml(item.syncStatus || "-")}</span></td>
+      <td>${escapeHtml(item.retryCount || 0)}</td>
+      <td>${escapeHtml(formatDateTime(item.updatedAt))}</td>
+      <td>${escapeHtml(item.lastError || "-")}</td>
+    </tr>
+  `).join("") : `<tr><td colspan="7" class="admin-table__empty">No sync attempts found.</td></tr>`;
+}
+
+function renderDuplicates(tableBody, placeholder, payload) {
+  if (!tableBody || !placeholder) {
+    return;
+  }
+
+  const rows = Array.isArray(payload?.duplicates) ? payload.duplicates : [];
+  if (!payload?.hasCentralLog) {
+    tableBody.innerHTML = "";
+    placeholder.hidden = false;
+    placeholder.textContent = "Duplicate prevention is handled by localSubmissionId, but no central duplicate log table is available yet.";
+    return;
+  }
+
+  placeholder.hidden = true;
+  tableBody.innerHTML = rows.length ? rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.localSubmissionId || "-")}</td>
+      <td>${escapeHtml(row.householdId || "-")}</td>
+      <td>${escapeHtml(row.formType || "-")}</td>
+      <td><span class="admin-chip admin-chip--${getStatusTone(row.result)}">${escapeHtml(row.result || "-")}</span></td>
+      <td>${escapeHtml(formatDateTime(row.timestamp))}</td>
+    </tr>
+  `).join("") : `<tr><td colspan="5" class="admin-table__empty">No duplicate visibility rows found.</td></tr>`;
+}
+
+function renderHealth(container, payload) {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = [
+    ["Backend Health", payload?.backend || "Unknown"],
+    ["Database", payload?.database || "Unknown"],
+    ["Dashboard Version", DASHBOARD_VERSION],
+    ["Admin Users", payload?.adminUserCount || 0],
+    ["Sync Records", payload?.syncSubmissionCount || 0],
+    ["Last Checked", formatDateTime(payload?.checkedAt)],
+  ].map(([label, value]) => `
+    <article class="admin-summary-card">
+      <strong>${escapeHtml(value)}</strong>
+      <span>${escapeHtml(label)}</span>
+    </article>
+  `).join("");
 }
 
 function bootLoginPage() {
@@ -890,7 +472,7 @@ function bootLoginPage() {
 
   const existing = sessionStorage.getItem(AUTH_KEY);
   if (existing) {
-    window.location.href = "dashboard.html";
+    window.location.href = `dashboard.html?t=${Date.now()}`;
     return;
   }
 
@@ -899,7 +481,6 @@ function bootLoginPage() {
     if (!passwordInput) {
       return;
     }
-
     passwordInput.setAttribute("type", isVisible ? "password" : "text");
     passwordToggle.setAttribute("aria-pressed", String(!isVisible));
     passwordToggle.setAttribute("aria-label", isVisible ? "Show password" : "Hide password");
@@ -914,7 +495,6 @@ function bootLoginPage() {
     if (feedback) {
       feedback.textContent = "";
     }
-
     if (submitButton) {
       submitButton.disabled = true;
       submitButton.textContent = "Signing in...";
@@ -923,29 +503,20 @@ function bootLoginPage() {
     try {
       const result = await apiJsonRequest("/api/admin/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
       });
-
-      sessionStorage.setItem(
-        AUTH_KEY,
-        JSON.stringify({
-          email: result?.session?.email || email || MANAGEMENT_EMAIL,
-          name: result?.session?.name || "Management User",
-        })
-      );
-      window.location.href = "dashboard.html";
+      sessionStorage.setItem(AUTH_KEY, JSON.stringify({
+        token: result?.session?.token || "",
+        email: result?.session?.email || email || MANAGEMENT_EMAIL,
+        name: result?.session?.name || "Management User",
+      }));
+      window.location.href = `dashboard.html?t=${Date.now()}`;
     } catch (error) {
       if (feedback) {
-        feedback.textContent =
-          error?.status === 401
-            ? "Invalid management credentials."
-            : "Unable to reach the backend. Start the backend server and try again.";
+        feedback.textContent = error?.status === 401
+          ? "Invalid management credentials."
+          : "Unable to reach the backend. Start the backend server and try again.";
       }
     } finally {
       if (submitButton) {
@@ -956,207 +527,305 @@ function bootLoginPage() {
   });
 }
 
-function triggerExport(dataset, format) {
-  const link = document.createElement("a");
-  link.href = `${backendBaseUrl}/api/export?dataset=${encodeURIComponent(dataset)}&format=${encodeURIComponent(format)}`;
-  link.rel = "noopener";
-  document.body.append(link);
-  link.click();
-  link.remove();
-}
-
 async function bootDashboardPage() {
   const session = readJson(sessionStorage, AUTH_KEY, null);
   if (!session) {
-    window.location.href = "index.html";
+    window.location.href = `index.html?t=${Date.now()}`;
     return;
   }
 
-  const name = document.querySelector("[data-admin-user-name]");
-  const email = document.querySelector("[data-admin-user-email]");
-  const metrics = document.querySelector("[data-admin-metrics]");
-  const pipeline = document.querySelector("[data-admin-pipeline]");
-  const pages = Array.from(document.querySelectorAll("[data-admin-page]"));
-  const navLinks = Array.from(document.querySelectorAll(".admin-nav__link"));
-  const tableBody = document.querySelector("[data-admin-data-table-body]");
-  const refreshButton = document.querySelector("[data-admin-refresh]");
-  const exportCsvButton = document.querySelector("[data-admin-export-csv]");
-  const exportJsonButton = document.querySelector("[data-admin-export-json]");
-  const exportSeafButton = document.querySelector("[data-admin-export-seaf]");
-  const exportEngineeringButton = document.querySelector("[data-admin-export-engineering]");
-  const exportInventoryButton = document.querySelector("[data-admin-export-inventory]");
-  const householdSummary = document.querySelector("[data-admin-household-summary]");
-  const householdList = document.querySelector("[data-admin-household-list]");
-  const householdSearch = document.querySelector("[data-admin-household-search]");
-  const filters = {
-    location: document.querySelector("[data-admin-filter-location]"),
-    status: document.querySelector("[data-admin-filter-status]"),
-    name: document.querySelector("[data-admin-filter-name]"),
-    startDate: document.querySelector("[data-admin-filter-start-date]"),
-    endDate: document.querySelector("[data-admin-filter-end-date]"),
-    stage: document.querySelector("[data-admin-filter-stage]"),
+  const state = {
+    dashboard: { summary: {}, households: [] },
+    users: [],
+    syncMonitoring: null,
+    duplicates: null,
+    health: null,
   };
-  const logout = document.querySelector("[data-admin-logout]");
 
-  let records = [];
-  let snapshot = {};
-  let health = null;
-  let usingBackend = false;
+  const elements = {
+    name: document.querySelector("[data-admin-user-name]"),
+    email: document.querySelector("[data-admin-user-email]"),
+    feedback: document.querySelector("[data-admin-dashboard-feedback]"),
+    title: document.querySelector("[data-admin-page-title]"),
+    pages: Array.from(document.querySelectorAll("[data-admin-page]")),
+    navLinks: Array.from(document.querySelectorAll("[data-admin-nav-link]")),
+    summaryCards: document.querySelector("[data-admin-summary-cards]"),
+    progressTableBody: document.querySelector("[data-admin-progress-table-body]"),
+    searchInput: document.querySelector("[data-admin-search]"),
+    filterSelect: document.querySelector("[data-admin-filter-status]"),
+    searchTableBody: document.querySelector("[data-admin-search-table-body]"),
+    detailsSearch: document.querySelector("[data-admin-details-search]"),
+    detailsSelect: document.querySelector("[data-admin-details-select]"),
+    detailsPanel: document.querySelector("[data-admin-details-panel]"),
+    refreshButton: document.querySelector("[data-admin-refresh]"),
+    refreshHealthButton: document.querySelector("[data-admin-refresh-health]"),
+    logoutButton: document.querySelector("[data-admin-logout]"),
+    exportVisible: document.querySelector("[data-admin-export-visible]"),
+    exportAll: document.querySelector("[data-admin-export-all]"),
+    exportIncomplete: document.querySelector("[data-admin-export-incomplete]"),
+    exportSeafPending: document.querySelector("[data-admin-export-seaf-pending]"),
+    exportEngineeringPending: document.querySelector("[data-admin-export-engineering-pending]"),
+    exportInventoryPending: document.querySelector("[data-admin-export-inventory-pending]"),
+    exportSeafCsv: document.querySelector("[data-admin-export-seaf-csv]"),
+    exportEngineeringCsv: document.querySelector("[data-admin-export-engineering-csv]"),
+    exportInventoryCsv: document.querySelector("[data-admin-export-inventory-csv]"),
+    exportCombinedCsv: document.querySelector("[data-admin-export-combined-csv]"),
+    exportFeedback: document.querySelector("[data-admin-export-feedback]"),
+    syncSummary: document.querySelector("[data-admin-sync-summary]"),
+    syncTableBody: document.querySelector("[data-admin-sync-table-body]"),
+    syncPlaceholder: document.querySelector("[data-admin-sync-placeholder]"),
+    duplicatesTableBody: document.querySelector("[data-admin-duplicates-table-body]"),
+    duplicatesPlaceholder: document.querySelector("[data-admin-duplicates-placeholder]"),
+    usersTableBody: document.querySelector("[data-admin-users-table-body]"),
+    healthSummary: document.querySelector("[data-admin-health-summary]"),
+  };
 
-  if (name) {
-    name.textContent = session.name || "Management User";
-  }
-  if (email) {
-    email.textContent = session.email || MANAGEMENT_EMAIL;
-  }
+  const pageTitles = {
+    overview: "Overview",
+    progress: "Progress Table",
+    search: "Search & Filter",
+    "household-details": "Household Details",
+    export: "Export Data",
+    "sync-monitoring": "Sync Monitoring",
+    duplicates: "Duplicate Prevention",
+    "admin-users": "Admin Users",
+    "system-health": "System Health",
+  };
 
-  const setActivePage = (pageId) => {
-    const normalized = pageId || "overview";
+  const getSelectedHousehold = () => {
+    const householdId = elements.detailsSelect?.value || elements.detailsSearch?.value || "";
+    return state.dashboard.households.find((item) => item.householdId === householdId) || null;
+  };
 
-    pages.forEach((page) => {
-      const isActive = page.id === normalized;
+  const renderDetailsSelector = () => {
+    if (!elements.detailsSelect) {
+      return;
+    }
+
+    elements.detailsSelect.innerHTML = `<option value="">Choose household</option>${state.dashboard.households.map((household) => `
+      <option value="${escapeHtml(household.householdId)}">${escapeHtml(household.householdId)}${household.headName ? ` - ${escapeHtml(household.headName)}` : ""}</option>
+    `).join("")}`;
+  };
+
+  const renderSearchSection = () => {
+    const filtered = filterHouseholds(
+      state.dashboard.households,
+      elements.searchInput?.value || "",
+      elements.filterSelect?.value || "all"
+    );
+    renderHouseholdTable(elements.searchTableBody, filtered, (householdId) => {
+      window.location.hash = "#household-details";
+      if (elements.detailsSelect) {
+        elements.detailsSelect.value = householdId;
+      }
+      if (elements.detailsSearch) {
+        elements.detailsSearch.value = householdId;
+      }
+      renderDetailsPanel(elements.detailsPanel, getSelectedHousehold());
+      updateActivePage();
+    });
+    return filtered;
+  };
+
+  const renderAll = () => {
+    renderSummaryCards(elements.summaryCards, state.dashboard.summary);
+    renderHouseholdTable(elements.progressTableBody, state.dashboard.households, (householdId) => {
+      window.location.hash = "#household-details";
+      if (elements.detailsSelect) {
+        elements.detailsSelect.value = householdId;
+      }
+      if (elements.detailsSearch) {
+        elements.detailsSearch.value = householdId;
+      }
+      renderDetailsPanel(elements.detailsPanel, getSelectedHousehold());
+      updateActivePage();
+    });
+    renderSearchSection();
+    renderDetailsSelector();
+    renderDetailsPanel(elements.detailsPanel, getSelectedHousehold());
+    renderAdminUsers(elements.usersTableBody, state.users);
+    renderSyncMonitoring(elements.syncSummary, elements.syncTableBody, elements.syncPlaceholder, state.syncMonitoring);
+    renderDuplicates(elements.duplicatesTableBody, elements.duplicatesPlaceholder, state.duplicates);
+    renderHealth(elements.healthSummary, state.health);
+  };
+
+  const setFeedback = (message, isError = false) => {
+    if (!elements.feedback) {
+      return;
+    }
+    elements.feedback.textContent = message || "";
+    elements.feedback.classList.toggle("admin-feedback--error", Boolean(isError));
+  };
+
+  const setExportFeedback = (message, isError = false) => {
+    if (!elements.exportFeedback) {
+      setFeedback(message, isError);
+      return;
+    }
+    elements.exportFeedback.textContent = message || "";
+    elements.exportFeedback.classList.toggle("admin-feedback--error", Boolean(isError));
+  };
+
+  const updateActivePage = () => {
+    const pageId = (window.location.hash || "#overview").replace("#", "") || "overview";
+    elements.pages.forEach((page) => {
+      const isActive = page.id === pageId;
       page.hidden = !isActive;
       page.classList.toggle("is-active", isActive);
     });
-
-    navLinks.forEach((link) => {
-      const linkHash = (link.getAttribute("href") || "").replace("#", "");
-      link.classList.toggle("is-active", linkHash === normalized);
+    elements.navLinks.forEach((link) => {
+      const isActive = (link.getAttribute("href") || "").replace("#", "") === pageId;
+      link.classList.toggle("is-active", isActive);
     });
+    if (elements.title) {
+      elements.title.textContent = pageTitles[pageId] || "Overview";
+    }
   };
 
-  const renderTable = () => {
-    renderDataTable(tableBody, records, {
-      location: filters.location?.value || "",
-      status: filters.status?.value || "",
-      name: filters.name?.value || "",
-      startDate: filters.startDate?.value || "",
-      endDate: filters.endDate?.value || "",
-      stage: filters.stage?.value || "",
-    });
+  const loadDashboardData = async () => {
+    const [dashboard, users, syncMonitoring, duplicates, health] = await Promise.all([
+      apiJsonRequest(`/api/admin/dashboard?t=${Date.now()}`, { cache: "no-store" }),
+      apiJsonRequest(`/api/admin/users?t=${Date.now()}`, { cache: "no-store" }),
+      apiJsonRequest(`/api/admin/sync-monitoring?t=${Date.now()}`, { cache: "no-store" }),
+      apiJsonRequest(`/api/admin/duplicates?t=${Date.now()}`, { cache: "no-store" }),
+      apiJsonRequest(`/api/admin/health?t=${Date.now()}`, { cache: "no-store" }),
+    ]);
+
+    state.dashboard = dashboard || { summary: {}, households: [] };
+    state.users = users?.users || [];
+    state.syncMonitoring = syncMonitoring;
+    state.duplicates = duplicates;
+    state.health = health;
+    renderAll();
   };
 
-  const renderHouseholds = () => {
-    renderHouseholdList(householdList, records, householdSearch?.value || "");
-  };
+  if (elements.name) {
+    elements.name.textContent = session.name || "Management User";
+  }
+  if (elements.email) {
+    elements.email.textContent = session.email || MANAGEMENT_EMAIL;
+  }
 
-  const loadRecords = async () => {
-    usingBackend = false;
-
+  const refreshAll = async () => {
+    if (elements.refreshButton) {
+      elements.refreshButton.disabled = true;
+    }
+    setFeedback("Loading dashboard data...");
     try {
-      const nextSnapshot = await apiJsonRequest(`/api/db?t=${Date.now()}`);
-      snapshot = nextSnapshot;
-      records = buildRecordsFromSnapshot(nextSnapshot);
-      usingBackend = true;
-
-      try {
-        health = await apiJsonRequest("/api/health");
-      } catch (error) {
-        health = null;
-      }
+      await loadDashboardData();
+      setFeedback(`Loaded ${state.dashboard.households.length} household${state.dashboard.households.length === 1 ? "" : "s"} from the backend.`);
     } catch (error) {
-      health = null;
-      snapshot = {};
-      records = [];
+      state.dashboard = { summary: {}, households: [] };
+      state.users = [];
+      state.syncMonitoring = null;
+      state.duplicates = null;
+      state.health = null;
+      renderAll();
+      setFeedback(error?.message || "Unable to load dashboard data.", true);
+    } finally {
+      if (elements.refreshButton) {
+        elements.refreshButton.disabled = false;
+      }
     }
-
-    renderMetrics(metrics, records);
-    renderPipeline(pipeline, records);
-    renderTable();
-    renderHouseholds();
   };
 
-  Object.values(filters).forEach((control) => {
-    control?.addEventListener("input", renderTable);
-    control?.addEventListener("change", renderTable);
+  elements.searchInput?.addEventListener("input", () => {
+    renderSearchSection();
   });
-
-  householdSearch?.addEventListener("input", renderHouseholds);
-
-  refreshButton?.addEventListener("click", () => {
-    void loadRecords();
+  elements.filterSelect?.addEventListener("change", () => {
+    renderSearchSection();
   });
-
-  exportCsvButton?.addEventListener("click", () => {
-    if (!usingBackend) {
-      window.alert("Start the Node.js backend first so the CSV can be downloaded from MySQL.");
-      return;
+  elements.detailsSearch?.addEventListener("input", () => {
+    const household = state.dashboard.households.find((item) => item.householdId === elements.detailsSearch.value.trim());
+    if (household && elements.detailsSelect) {
+      elements.detailsSelect.value = household.householdId;
     }
-
-    triggerExport("households", "csv");
+    renderDetailsPanel(elements.detailsPanel, household || getSelectedHousehold());
   });
-
-  exportJsonButton?.addEventListener("click", () => {
-    if (!usingBackend) {
-      window.alert("Start the Node.js backend first so the JSON can be downloaded from MySQL.");
-      return;
+  elements.detailsSelect?.addEventListener("change", () => {
+    if (elements.detailsSearch) {
+      elements.detailsSearch.value = elements.detailsSelect.value;
     }
-
-    triggerExport("snapshot", "json");
+    renderDetailsPanel(elements.detailsPanel, getSelectedHousehold());
   });
-
-  exportSeafButton?.addEventListener("click", () => {
-    if (!usingBackend) {
-      window.alert("Start the Node.js backend first so the SEAF CSV can be downloaded from MySQL.");
-      return;
+  elements.refreshButton?.addEventListener("click", () => {
+    void refreshAll();
+  });
+  elements.refreshHealthButton?.addEventListener("click", async () => {
+    try {
+      state.health = await apiJsonRequest(`/api/admin/health?t=${Date.now()}`, { cache: "no-store" });
+      renderHealth(elements.healthSummary, state.health);
+      setFeedback("System health refreshed.");
+    } catch (error) {
+      setFeedback(error?.message || "Unable to refresh system health.", true);
     }
-
-    triggerExport("seaf", "csv");
   });
-
-  exportEngineeringButton?.addEventListener("click", () => {
-    if (!usingBackend) {
-      window.alert("Start the Node.js backend first so the Engineering CSV can be downloaded from MySQL.");
-      return;
-    }
-
-    triggerExport("engineering", "csv");
-  });
-
-  exportInventoryButton?.addEventListener("click", () => {
-    if (!usingBackend) {
-      window.alert("Start the Node.js backend first so the Inventory CSV can be downloaded from MySQL.");
-      return;
-    }
-
-    triggerExport("inventory", "csv");
-  });
-
-  navLinks.forEach((link) => {
-    link.addEventListener("click", (event) => {
-      const href = String(link.getAttribute("href") || "").trim();
-      if (!href.startsWith("#")) {
-        return;
-      }
-
-      const target = href.replace("#", "");
-      if (!target) {
-        return;
-      }
-      event.preventDefault();
-      window.location.hash = target;
-      setActivePage(target);
-    });
-  });
-
-  window.addEventListener("hashchange", () => {
-    const target = window.location.hash.replace("#", "") || "overview";
-    setActivePage(target);
-  });
-
-  setActivePage(window.location.hash.replace("#", "") || "overview");
-  await loadRecords();
-
-  logout?.addEventListener("click", () => {
+  elements.logoutButton?.addEventListener("click", () => {
     sessionStorage.removeItem(AUTH_KEY);
     window.location.href = "index.html";
   });
+
+  const exportRows = (filename, rows) => downloadCsv(filename, rows);
+  elements.exportVisible?.addEventListener("click", () => {
+    exportRows("shehersaaz-visible-household-progress.csv", filterHouseholds(state.dashboard.households, elements.searchInput?.value || "", elements.filterSelect?.value || "all"));
+  });
+  elements.exportAll?.addEventListener("click", () => {
+    exportRows("shehersaaz-all-household-progress.csv", state.dashboard.households);
+  });
+  elements.exportIncomplete?.addEventListener("click", () => {
+    exportRows("shehersaaz-incomplete-households.csv", state.dashboard.households.filter((item) => !isFullyCompleted(item)));
+  });
+  elements.exportSeafPending?.addEventListener("click", () => {
+    exportRows("shehersaaz-seaf-pending.csv", state.dashboard.households.filter((item) => !item?.stages?.seaf?.submitted));
+  });
+  elements.exportEngineeringPending?.addEventListener("click", () => {
+    exportRows("shehersaaz-engineering-pending.csv", state.dashboard.households.filter((item) => !item?.stages?.engineering?.submitted));
+  });
+  elements.exportInventoryPending?.addEventListener("click", () => {
+    exportRows("shehersaaz-inventory-pending.csv", state.dashboard.households.filter((item) => !item?.stages?.inventory?.submitted));
+  });
+
+  const bindBackendExport = (button, path, fallbackFilename, label) => {
+    button?.addEventListener("click", async () => {
+      button.disabled = true;
+      setExportFeedback(`${label} download is starting...`);
+      try {
+        const filename = await apiDownloadRequest(path, fallbackFilename);
+        setExportFeedback(`${label} downloaded as ${filename}.`);
+      } catch (error) {
+        if (error?.status === 401) {
+          setExportFeedback("Your admin session has expired. Please log in again to export data.", true);
+          sessionStorage.removeItem(AUTH_KEY);
+        } else {
+          setExportFeedback(error?.message || `Unable to download ${label}.`, true);
+        }
+      } finally {
+        button.disabled = false;
+      }
+    });
+  };
+
+  bindBackendExport(elements.exportSeafCsv, "/api/admin/export/seaf", "seaf_export.csv", "SEAF CSV");
+  bindBackendExport(elements.exportEngineeringCsv, "/api/admin/export/engineering", "engineering_export.csv", "Engineering CSV");
+  bindBackendExport(elements.exportInventoryCsv, "/api/admin/export/inventory", "inventory_export.csv", "Inventory CSV");
+  bindBackendExport(
+    elements.exportCombinedCsv,
+    "/api/admin/export/combined",
+    "combined_assessment_export.csv",
+    "Combined Assessment CSV"
+  );
+
+  window.addEventListener("hashchange", updateActivePage);
+  updateActivePage();
+  await refreshAll();
 }
 
-if (document.querySelector("[data-admin-login-form]")) {
-  bootLoginPage();
-}
+document.addEventListener("DOMContentLoaded", () => {
+  if (document.querySelector("[data-admin-login-form]")) {
+    bootLoginPage();
+  }
 
-if (document.querySelector("[data-admin-metrics]")) {
-  void bootDashboardPage();
-}
+  if (document.querySelector("[data-admin-page-title]")) {
+    void bootDashboardPage();
+  }
+});

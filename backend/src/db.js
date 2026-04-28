@@ -1113,8 +1113,11 @@ const buildFormPayloadFromRow = (formKey, row = {}) => {
   return rawPayload && typeof rawPayload === "object" ? rawPayload : buildFlatFormPayload(formKey, row);
 };
 
-const buildHouseholdRecord = (householdRow = {}, statusRow = {}, engineeringRow = {}, inventoryRow = {}) => {
+const buildHouseholdRecord = (householdRow = {}, statusRow = {}, socioRow = {}, engineeringRow = {}, inventoryRow = {}) => {
   const householdPayload = parseJson(householdRow.payload_json, {});
+  const seafSubmitted = Boolean(socioRow?.household_id) || statusRow.socio_status === "Submitted";
+  const engineeringSubmitted = Boolean(engineeringRow?.household_id) || statusRow.engineering_status === "Submitted";
+  const inventorySubmitted = Boolean(inventoryRow?.household_id) || statusRow.inventory_status === "Submitted";
 
   return {
     ...householdPayload,
@@ -1141,9 +1144,9 @@ const buildHouseholdRecord = (householdRow = {}, statusRow = {}, engineeringRow 
     status: householdRow.eligibility_status || householdPayload.eligibilityStatus || "",
     engineerName: engineeringRow.engineer_name || "",
     stageStatus: {
-      seaf: statusRow.socio_status === "Submitted",
-      engineering: statusRow.engineering_status === "Submitted",
-      inventory: statusRow.inventory_status === "Submitted",
+      seaf: seafSubmitted,
+      engineering: engineeringSubmitted,
+      inventory: inventorySubmitted,
     },
     updatedAt: householdRow.updated_at || statusRow.updated_at || null,
   };
@@ -1159,15 +1162,96 @@ const listDedicatedFormRows = async (formKey) => {
   return rows.map((row) => normalizeRowForExport(row, tableName));
 };
 
+const getExportColumnNamesForTable = async (connection, tableName) => {
+  const [rows] = await connection.query(`SHOW COLUMNS FROM ${escapeSqlIdentifier(tableName)}`);
+  return rows
+    .map((row) => row.Field)
+    .filter((columnName) => isSimpleExportColumn(tableName, columnName));
+};
+
+const listTableExportRows = async (tableName) =>
+  withConnection(async (connection) => {
+    const columns = await getExportColumnNamesForTable(connection, tableName);
+    if (!columns.length) {
+      return [];
+    }
+
+    const selectSql = columns.map((columnName) => escapeSqlIdentifier(columnName)).join(", ");
+    const [rows] = await connection.query(
+      `SELECT ${selectSql} FROM ${escapeSqlIdentifier(tableName)} ORDER BY updated_at DESC, household_id DESC`
+    );
+
+    return rows.map((row) =>
+      columns.reduce((exported, columnName) => {
+        exported[columnName] = row?.[columnName] ?? "";
+        return exported;
+      }, {})
+    );
+  });
+
+const listCombinedExportRows = async () =>
+  withConnection(async (connection) => {
+    const householdColumns = await getExportColumnNamesForTable(connection, tableNames.household);
+    const socioColumns = await getExportColumnNamesForTable(connection, tableNames.socio);
+    const engineeringColumns = await getExportColumnNamesForTable(connection, tableNames.engineering);
+    const inventoryColumns = await getExportColumnNamesForTable(connection, tableNames.inventory);
+
+    const joinedColumnSpecs = [
+      ...householdColumns.map((columnName) => ({
+        expression: `h.${escapeSqlIdentifier(columnName)}`,
+        alias: columnName,
+      })),
+      ...socioColumns
+        .filter((columnName) => columnName !== "household_id")
+        .map((columnName) => ({
+          expression: `s.${escapeSqlIdentifier(columnName)}`,
+          alias: `seaf_${columnName}`,
+        })),
+      ...engineeringColumns
+        .filter((columnName) => columnName !== "household_id")
+        .map((columnName) => ({
+          expression: `e.${escapeSqlIdentifier(columnName)}`,
+          alias: `engineering_${columnName}`,
+        })),
+      ...inventoryColumns
+        .filter((columnName) => columnName !== "household_id")
+        .map((columnName) => ({
+          expression: `i.${escapeSqlIdentifier(columnName)}`,
+          alias: `inventory_${columnName}`,
+        })),
+    ];
+
+    const selectSql = joinedColumnSpecs
+      .map(({ expression, alias }) => `${expression} AS ${escapeSqlIdentifier(alias)}`)
+      .join(", ");
+
+    const [rows] = await connection.query(
+      `SELECT ${selectSql}
+       FROM ${escapeSqlIdentifier(tableNames.household)} h
+       LEFT JOIN ${escapeSqlIdentifier(tableNames.socio)} s ON s.household_id = h.household_id
+       LEFT JOIN ${escapeSqlIdentifier(tableNames.engineering)} e ON e.household_id = h.household_id
+       LEFT JOIN ${escapeSqlIdentifier(tableNames.inventory)} i ON i.household_id = h.household_id
+       ORDER BY h.updated_at DESC, h.household_id DESC`
+    );
+
+    return rows.map((row) =>
+      joinedColumnSpecs.reduce((exported, { alias }) => {
+        exported[alias] = row?.[alias] ?? "";
+        return exported;
+      }, {})
+    );
+  });
+
 const listHouseholds = async () => {
   const snapshot = await getSnapshot();
   return snapshot.households;
 };
 
 const getHouseholdById = async (householdId) => {
-  const [householdRows, statusRows, engineeringRows, inventoryRows] = await Promise.all([
+  const [householdRows, statusRows, socioRows, engineeringRows, inventoryRows] = await Promise.all([
     ensurePool().query("SELECT * FROM household_info WHERE household_id = ?", [householdId]),
     ensurePool().query("SELECT * FROM assessment_status WHERE household_id = ?", [householdId]),
+    ensurePool().query("SELECT * FROM socio WHERE household_id = ?", [householdId]),
     ensurePool().query("SELECT * FROM engineering WHERE household_id = ?", [householdId]),
     ensurePool().query("SELECT * FROM inventory WHERE household_id = ?", [householdId]),
   ]);
@@ -1180,6 +1264,7 @@ const getHouseholdById = async (householdId) => {
   return buildHouseholdRecord(
     householdRow,
     statusRows[0][0] || {},
+    socioRows[0][0] || {},
     engineeringRows[0][0] || {},
     inventoryRows[0][0] || {}
   );
@@ -1221,6 +1306,7 @@ const getSnapshot = async () => {
     buildHouseholdRecord(
       row,
       statusMap.get(row.household_id) || {},
+      socioMap.get(row.household_id) || {},
       engineeringMap.get(row.household_id) || {},
       inventoryMap.get(row.household_id) || {}
     )
@@ -1277,6 +1363,326 @@ const getSnapshot = async () => {
     formSubmissions,
     generatedIds: householdRows[0].map((row) => row.household_id),
     updatedAt,
+  };
+};
+
+const mapSyncStatusToDashboardLabel = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "pending" || normalized === "syncing") {
+    return "Pending Sync";
+  }
+  if (normalized === "failed") {
+    return "Failed Sync";
+  }
+  return null;
+};
+
+const stageIsSubmitted = (rowExists, statusValue) => {
+  if (rowExists) {
+    return true;
+  }
+
+  return String(statusValue || "").trim().toLowerCase() === "submitted";
+};
+
+const buildDashboardStage = ({ submitted, submittedAt, syncLabel }) => {
+  if (submitted) {
+    return {
+      submitted: true,
+      label: "Submitted",
+      submittedAt: submittedAt || null,
+    };
+  }
+
+  if (syncLabel) {
+    return {
+      submitted: false,
+      label: syncLabel,
+      submittedAt: null,
+    };
+  }
+
+  return {
+    submitted: false,
+    label: "Not Submitted",
+    submittedAt: null,
+  };
+};
+
+const listAdminDashboardData = async () => {
+  const [householdRows, statusRows, socioRows, engineeringRows, inventoryRows, syncRows] = await Promise.all([
+    ensurePool().query("SELECT * FROM household_info ORDER BY updated_at DESC, household_id DESC"),
+    ensurePool().query("SELECT * FROM assessment_status ORDER BY updated_at DESC, household_id DESC"),
+    ensurePool().query("SELECT * FROM socio ORDER BY updated_at DESC, household_id DESC"),
+    ensurePool().query("SELECT * FROM engineering ORDER BY updated_at DESC, household_id DESC"),
+    ensurePool().query("SELECT * FROM inventory ORDER BY updated_at DESC, household_id DESC"),
+    ensurePool().query(
+      `SELECT household_id, form_type, sync_status, updated_at
+       FROM sync_submissions
+       WHERE sync_status IN ('pending', 'syncing', 'failed')
+       ORDER BY updated_at DESC, created_at DESC`
+    ),
+  ]);
+
+  const householdMap = new Map(householdRows[0].map((row) => [row.household_id, row]));
+  const statusMap = new Map(statusRows[0].map((row) => [row.household_id, row]));
+  const socioMap = new Map(socioRows[0].map((row) => [row.household_id, row]));
+  const engineeringMap = new Map(engineeringRows[0].map((row) => [row.household_id, row]));
+  const inventoryMap = new Map(inventoryRows[0].map((row) => [row.household_id, row]));
+  const syncMap = new Map();
+
+  syncRows[0].forEach((row) => {
+    const householdId = String(row.household_id || "").trim();
+    const formType = String(row.form_type || "").trim().toLowerCase();
+    if (!householdId || !formType) {
+      return;
+    }
+
+    const normalizedFormType =
+      formType === "socio" || formType === "seaf"
+        ? "seaf"
+        : formType === "household"
+          ? "householdInfo"
+          : formType;
+
+    if (!["householdInfo", "seaf", "engineering", "inventory"].includes(normalizedFormType)) {
+      return;
+    }
+
+    const key = `${householdId}:${normalizedFormType}`;
+    if (!syncMap.has(key)) {
+      syncMap.set(key, row);
+    }
+  });
+
+  const householdIds = new Set([
+    ...householdMap.keys(),
+    ...statusMap.keys(),
+    ...socioMap.keys(),
+    ...engineeringMap.keys(),
+    ...inventoryMap.keys(),
+  ]);
+
+  const households = Array.from(householdIds)
+    .map((householdId) => {
+      const householdRow = householdMap.get(householdId) || {};
+      const statusRow = statusMap.get(householdId) || {};
+      const socioRow = socioMap.get(householdId) || {};
+      const engineeringRow = engineeringMap.get(householdId) || {};
+      const inventoryRow = inventoryMap.get(householdId) || {};
+
+      const householdInfoSubmitted = stageIsSubmitted(Boolean(householdMap.get(householdId)), statusRow.household_status);
+      const seafSubmitted = stageIsSubmitted(Boolean(socioMap.get(householdId)), statusRow.socio_status);
+      const engineeringSubmitted = stageIsSubmitted(Boolean(engineeringMap.get(householdId)), statusRow.engineering_status);
+      const inventorySubmitted = stageIsSubmitted(Boolean(inventoryMap.get(householdId)), statusRow.inventory_status);
+
+      const householdInfoStage = buildDashboardStage({
+        submitted: householdInfoSubmitted,
+        submittedAt: householdRow.updated_at || statusRow.updated_at || null,
+        syncLabel: mapSyncStatusToDashboardLabel(syncMap.get(`${householdId}:householdInfo`)?.sync_status),
+      });
+      const seafStage = buildDashboardStage({
+        submitted: seafSubmitted,
+        submittedAt: socioRow.updated_at || statusRow.updated_at || null,
+        syncLabel: mapSyncStatusToDashboardLabel(syncMap.get(`${householdId}:seaf`)?.sync_status),
+      });
+      const engineeringStage = buildDashboardStage({
+        submitted: engineeringSubmitted,
+        submittedAt: engineeringRow.updated_at || statusRow.updated_at || null,
+        syncLabel: mapSyncStatusToDashboardLabel(syncMap.get(`${householdId}:engineering`)?.sync_status),
+      });
+      const inventoryStage = buildDashboardStage({
+        submitted: inventorySubmitted,
+        submittedAt: inventoryRow.updated_at || statusRow.updated_at || null,
+        syncLabel: mapSyncStatusToDashboardLabel(syncMap.get(`${householdId}:inventory`)?.sync_status),
+      });
+
+      const updatedAt = [
+        householdRow.updated_at,
+        statusRow.updated_at,
+        socioRow.updated_at,
+        engineeringRow.updated_at,
+        inventoryRow.updated_at,
+      ]
+        .filter(Boolean)
+        .sort((left, right) => String(right).localeCompare(String(left)))[0] || null;
+
+      return {
+        householdId,
+        headName:
+          householdRow.household_head_name ||
+          householdRow.respondent_name ||
+          statusRow.selected_household_name ||
+          "",
+        location: householdRow.household_location || householdRow.city || householdRow.ucnc || householdRow.interview_address || "",
+        phone: householdRow.respondent_phone_number || "",
+        updatedAt,
+        stages: {
+          householdInfo: householdInfoStage,
+          seaf: seafStage,
+          engineering: engineeringStage,
+          inventory: inventoryStage,
+        },
+      };
+    })
+    .sort((left, right) => {
+      const dateCompare = String(right.updatedAt || "").localeCompare(String(left.updatedAt || ""));
+      if (dateCompare !== 0) {
+        return dateCompare;
+      }
+
+      return String(left.householdId || "").localeCompare(String(right.householdId || ""));
+    });
+
+  const summary = households.reduce(
+    (accumulator, household) => {
+      accumulator.totalHouseholds += 1;
+      accumulator.householdInfoSubmitted += household.stages.householdInfo.submitted ? 1 : 0;
+      accumulator.seafSubmitted += household.stages.seaf.submitted ? 1 : 0;
+      accumulator.engineeringSubmitted += household.stages.engineering.submitted ? 1 : 0;
+      accumulator.inventorySubmitted += household.stages.inventory.submitted ? 1 : 0;
+
+      const fullyCompleted =
+        household.stages.householdInfo.submitted &&
+        household.stages.seaf.submitted &&
+        household.stages.engineering.submitted &&
+        household.stages.inventory.submitted;
+
+      if (fullyCompleted) {
+        accumulator.fullyCompleted += 1;
+      } else {
+        accumulator.incomplete += 1;
+      }
+
+      return accumulator;
+    },
+    {
+      totalHouseholds: 0,
+      householdInfoSubmitted: 0,
+      seafSubmitted: 0,
+      engineeringSubmitted: 0,
+      inventorySubmitted: 0,
+      fullyCompleted: 0,
+      incomplete: 0,
+    }
+  );
+
+  return {
+    ok: true,
+    summary,
+    households,
+  };
+};
+
+const listAdminUsers = async () => {
+  const [rows] = await ensurePool().query(
+    `SELECT id, name, email, role, is_active, created_at, updated_at
+     FROM admin_users
+     ORDER BY created_at DESC, id DESC`
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name || "",
+    email: row.email || "",
+    role: row.role || "admin",
+    isActive: Boolean(row.is_active),
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+  }));
+};
+
+const listAdminSyncMonitoring = async () => {
+  const [rows] = await ensurePool().query(
+    `SELECT local_submission_id, household_id, form_type, sync_status, last_error, retry_count, synced_at, created_at, updated_at
+     FROM sync_submissions
+     ORDER BY updated_at DESC, created_at DESC
+     LIMIT 100`
+  );
+
+  const summary = rows.reduce(
+    (accumulator, row) => {
+      const status = String(row.sync_status || "").trim().toLowerCase();
+      if (status === "pending" || status === "syncing") {
+        accumulator.pendingCount += 1;
+      } else if (status === "failed") {
+        accumulator.failedCount += 1;
+      } else if (status === "synced") {
+        accumulator.submittedCount += 1;
+      }
+      return accumulator;
+    },
+    {
+      pendingCount: 0,
+      failedCount: 0,
+      submittedCount: 0,
+      hasCentralLog: rows.length > 0,
+    }
+  );
+
+  return {
+    ok: true,
+    summary,
+    recentAttempts: rows.map((row) => ({
+      localSubmissionId: row.local_submission_id,
+      householdId: row.household_id,
+      formType: row.form_type,
+      syncStatus: row.sync_status,
+      lastError: row.last_error || null,
+      retryCount: Number(row.retry_count || 0),
+      syncedAt: row.synced_at || null,
+      createdAt: row.created_at || null,
+      updatedAt: row.updated_at || null,
+    })),
+  };
+};
+
+const listAdminDuplicateVisibility = async () => {
+  const [rows] = await ensurePool().query(
+    `SELECT local_submission_id, household_id, form_type, sync_status, response_json, created_at, updated_at
+     FROM sync_submissions
+     ORDER BY updated_at DESC, created_at DESC
+     LIMIT 100`
+  );
+
+  return {
+    ok: true,
+    hasCentralLog: rows.length > 0,
+    duplicates: rows.map((row) => {
+      const response = parseJson(row.response_json, {});
+      let result = "pending";
+
+      if (response?.idempotentReplay) {
+        result = "already exists";
+      } else if (String(row.sync_status || "").trim().toLowerCase() === "synced") {
+        result = "inserted";
+      } else if (String(row.sync_status || "").trim().toLowerCase() === "failed") {
+        result = "failed";
+      }
+
+      return {
+        localSubmissionId: row.local_submission_id,
+        householdId: row.household_id,
+        formType: row.form_type,
+        result,
+        timestamp: row.updated_at || row.created_at || null,
+      };
+    }),
+  };
+};
+
+const getAdminHealth = async () => {
+  const ok = await healthCheck();
+  const [adminUserRows] = await ensurePool().query("SELECT COUNT(*) AS total FROM admin_users");
+  const [syncRows] = await ensurePool().query("SELECT COUNT(*) AS total FROM sync_submissions");
+
+  return {
+    ok: true,
+    backend: ok ? "Healthy" : "Unavailable",
+    database: ok ? "Connected" : "Unavailable",
+    adminUserCount: Number(adminUserRows[0]?.total || 0),
+    syncSubmissionCount: Number(syncRows[0]?.total || 0),
+    checkedAt: new Date().toISOString(),
   };
 };
 
@@ -1492,11 +1898,18 @@ module.exports = {
   findAdminUserByEmail,
   createAdminUser,
   upsertAdminUser,
+  listAdminUsers,
+  listAdminSyncMonitoring,
+  listAdminDuplicateVisibility,
+  getAdminHealth,
   listHouseholds,
   listDedicatedFormRows,
+  listTableExportRows,
+  listCombinedExportRows,
   getHouseholdById,
   getFormSubmission,
   getSnapshot,
+  listAdminDashboardData,
   upsertHousehold,
   submitForm,
 };

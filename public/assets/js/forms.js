@@ -272,6 +272,28 @@ const writeLocalSubmissionStatuses = (data) => {
   void persistOfflineStateValue("localSubmissionStatuses", offlineState.localSubmissionStatuses);
 };
 
+const normalizeFormType = (formType) => {
+  const value = String(formType || "").toLowerCase().trim();
+
+  if (value === "inventory" || value === "inventory_form" || value === "inventory-assessment" || value === "inventoryassessment") {
+    return "inventory";
+  }
+
+  if (value === "socio" || value === "seaf" || value === "socioeconomic" || value === "socioeconomic-assessment") {
+    return "seaf";
+  }
+
+  if (value === "engineering" || value === "engineering_form" || value === "engineering-assessment") {
+    return "engineering";
+  }
+
+  if (value === "household" || value === "household-information" || value === "household_information") {
+    return "household";
+  }
+
+  return value;
+};
+
 const saveLocalSubmissionStatus = (submission = {}) => {
   const localSubmissionId = String(submission.localSubmissionId || "").trim();
   if (!localSubmissionId) {
@@ -282,7 +304,7 @@ const saveLocalSubmissionStatus = (submission = {}) => {
   statuses[localSubmissionId] = {
     localSubmissionId,
     householdId: submission.householdId || "",
-    formType: submission.formType || "unknown",
+    formType: normalizeFormType(submission.formType || "unknown"),
     syncStatus: submission.syncStatus || syncStatusValues.pending,
     createdAt: submission.createdAt || new Date().toISOString(),
     syncedAt: submission.syncedAt || null,
@@ -293,10 +315,11 @@ const saveLocalSubmissionStatus = (submission = {}) => {
 };
 
 const getLatestSubmissionStatusForItem = (householdId, formType) => {
+  const normalizedFormType = normalizeFormType(formType);
   const entries = Object.values(readLocalSubmissionStatuses()).filter((entry) =>
     entry &&
     entry.householdId === householdId &&
-    entry.formType === formType
+    normalizeFormType(entry.formType) === normalizedFormType
   );
 
   if (entries.length === 0) {
@@ -725,7 +748,20 @@ const getCurrentFormSyncState = () => {
   const localStatus = getLatestSubmissionStatusForItem(householdId, formType);
   const syncStatus = localStatus?.syncStatus || syncStatusValues.draft;
   const submittedForms = readSubmittedForms();
-  const stageStatus = submittedForms[householdId]?.[formType] || syncStatus;
+  const backendStageStatus = submittedForms[householdId]?.[formType] || "";
+  const stageStatus = backendStageStatus === "Submitted" ? "Submitted" : syncStatus;
+
+  if (formType === "inventory") {
+    console.log("Inventory sync state resolved:", {
+      householdId,
+      normalizedFormType: formType,
+      backendInventorySubmitted: backendStageStatus === "Submitted",
+      localQueueInventoryStatus: localStatus?.syncStatus || syncStatusValues.draft,
+      finalDisplayedInventoryStatus: stageStatus,
+      backendOverrideApplied: backendStageStatus === "Submitted",
+    });
+  }
+
   return {
     ...localStatus,
     stageStatus,
@@ -788,13 +824,15 @@ const confirmSyncedQueueItem = async (queueItem) => {
     return;
   }
 
-  if (["seaf", "engineering", "inventory"].includes(queueItem.formType)) {
-    confirmSubmittedFormStatus(queueItem.householdId, queueItem.formType, "Submitted", {
+  const normalizedFormType = normalizeFormType(queueItem.formType);
+
+  if (["seaf", "engineering", "inventory"].includes(normalizedFormType)) {
+    confirmSubmittedFormStatus(queueItem.householdId, normalizedFormType, "Submitted", {
       householdPatch: queueItem.payload?.householdPatch || {},
     });
   }
 
-  if (queueItem.formType === "household") {
+  if (normalizedFormType === "household") {
     const latestRecords = readHouseholdRecords();
     const existingRecord = latestRecords.find((record) => record?.householdId === queueItem.householdId) || {};
     upsertHouseholdRecord(queueItem.householdId, {
@@ -806,13 +844,13 @@ const confirmSyncedQueueItem = async (queueItem) => {
 
 const inferFormTypeFromSyncPath = (path, payload = {}) => {
   if (payload?.formType) {
-    return String(payload.formType);
+    return normalizeFormType(String(payload.formType));
   }
 
   const normalizedPath = String(path || "");
   const formMatch = normalizedPath.match(/\/api\/forms\/([^/]+)\/submit/i);
   if (formMatch?.[1]) {
-    return formMatch[1].toLowerCase();
+    return normalizeFormType(formMatch[1].toLowerCase());
   }
 
   if (normalizedPath.startsWith("/api/households")) {
@@ -1119,6 +1157,62 @@ const buildSubmittedFormsFromHouseholds = (households = []) => {
   return submittedForms;
 };
 
+const syncLocalStatusesWithBackendHouseholds = (households = []) => {
+  if (!Array.isArray(households) || households.length === 0) {
+    return false;
+  }
+
+  const statuses = readLocalSubmissionStatuses();
+  let changed = false;
+
+  households.forEach((household) => {
+    const householdId = household?.householdId;
+    if (!householdId || !household?.stageStatus) {
+      return;
+    }
+
+    ["seaf", "engineering", "inventory"].forEach((formType) => {
+      if (!household.stageStatus[formType]) {
+        return;
+      }
+
+      Object.values(statuses).forEach((entry) => {
+        if (!entry || entry.householdId !== householdId || normalizeFormType(entry.formType) !== formType) {
+          return;
+        }
+
+        if (entry.syncStatus !== syncStatusValues.synced || !entry.syncedAt || entry.lastError) {
+          statuses[entry.localSubmissionId] = {
+            ...entry,
+            formType,
+            syncStatus: syncStatusValues.synced,
+            syncedAt: entry.syncedAt || new Date().toISOString(),
+            lastError: null,
+          };
+          changed = true;
+
+          if (formType === "inventory") {
+            console.log("Inventory backend status overrode local pending status:", {
+              householdId,
+              normalizedFormType: formType,
+              backendInventorySubmitted: true,
+              localQueueInventoryStatus: entry.syncStatus,
+              finalDisplayedInventoryStatus: "Submitted",
+              backendOverrideApplied: true,
+            });
+          }
+        }
+      });
+    });
+  });
+
+  if (changed) {
+    writeLocalSubmissionStatuses(statuses);
+  }
+
+  return changed;
+};
+
 const syncSharedHouseholdStateFromBackend = async () => {
   if (!navigator.onLine) {
     return null;
@@ -1143,6 +1237,7 @@ const syncSharedHouseholdStateFromBackend = async () => {
     const backendSubmittedForms = buildSubmittedFormsFromHouseholds(households);
     const mergedSubmittedForms = mergeSubmittedFormsRecords(readSubmittedForms(), backendSubmittedForms);
     writeSubmittedForms(mergedSubmittedForms);
+    syncLocalStatusesWithBackendHouseholds(households);
 
     return {
       source: "backend",
@@ -2330,11 +2425,12 @@ const isHouseholdFullySubmitted = (submission = {}) => {
 };
 
 const hasSubmittedForm = (submission = {}, formKey = "") => {
-  if (!formKey) {
+  const normalizedFormKey = normalizeFormType(formKey);
+  if (!normalizedFormKey) {
     return false;
   }
 
-  return String(submission[formKey] || "").trim().toLowerCase() === "submitted";
+  return String(submission[normalizedFormKey] || "").trim().toLowerCase() === "submitted";
 };
 
 const getFormTypeFromTargetHref = (targetHref = "") => {
@@ -2404,21 +2500,22 @@ const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", sync
   if (!householdId) {
     return Promise.resolve(null);
   }
-  confirmSubmittedFormStatus(householdId, formKey, status, syncOptions);
+  const normalizedFormKey = normalizeFormType(formKey);
+  confirmSubmittedFormStatus(householdId, normalizedFormKey, status, syncOptions);
   const householdPatch = syncOptions.householdPatch && typeof syncOptions.householdPatch === "object"
     ? syncOptions.householdPatch
     : {};
   const existing = readSubmittedForms()[householdId] || {};
   const currentHeadName = selectedHouseholdNameInput ? selectedHouseholdNameInput.value.trim() : "";
 
-  const syncPromise = queueBackendSync(`/api/forms/${formKey}/submit`, {
+  const syncPromise = queueBackendSync(`/api/forms/${normalizedFormKey}/submit`, {
     householdId,
     headName: currentHeadName || existing.headName || "",
     status,
     payload: syncOptions.payload || {},
     householdPatch,
   }, "POST", {
-    formType: formKey,
+    formType: normalizedFormKey,
     successMessage: "Submitted successfully.",
   });
 

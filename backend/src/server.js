@@ -7,8 +7,15 @@ const {
   initializeDatabase,
   countAdminUsers,
   findAdminUserByEmail,
+  listAdminUsers,
+  listAdminSyncMonitoring,
+  listAdminDuplicateVisibility,
+  getAdminHealth,
   listHouseholds,
+  listAdminDashboardData,
   listDedicatedFormRows,
+  listTableExportRows,
+  listCombinedExportRows,
   getHouseholdById,
   getFormSubmission,
   getSnapshot,
@@ -30,6 +37,8 @@ const exportableDatasets = new Set([
   "inventory",
   "snapshot",
 ]);
+
+const adminSessions = new Map();
 
 const escapeCsvValue = (value) => {
   const normalized = value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
@@ -79,6 +88,48 @@ const toFormSubmissionRows = (formSubmissions = {}) => {
   });
 
   return rows;
+};
+
+const generateAdminSessionToken = () =>
+  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+
+const createAdminSession = (user = {}) => {
+  const token = generateAdminSessionToken();
+  adminSessions.set(token, {
+    email: user.email || "",
+    name: user.name || "",
+    role: user.role || "admin",
+    createdAt: new Date().toISOString(),
+  });
+  return token;
+};
+
+const getAdminSessionFromRequest = (req) => {
+  const authorizationHeader = String(req.headers.authorization || "");
+  const bearerMatch = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+  const headerToken = bearerMatch?.[1]?.trim();
+  const queryToken = new URL(req.url || "/", `http://${req.headers.host || `${host}:${port}`}`).searchParams.get("adminToken");
+  const token = String(headerToken || queryToken || "").trim();
+
+  if (!token) {
+    return null;
+  }
+
+  return adminSessions.get(token) || null;
+};
+
+const requireAdminSession = (req, res) => {
+  const session = getAdminSessionFromRequest(req);
+  if (!session) {
+    sendJson(res, 401, { error: "Admin authentication required." });
+    return null;
+  }
+
+  return session;
+};
+
+const sendCsvDownload = (res, filename, rows) => {
+  sendDownload(res, 200, toCsv(rows), filename, "text/csv; charset=utf-8");
 };
 
 const getExportPayload = async (snapshot, dataset) => {
@@ -152,6 +203,7 @@ const handleApi = async (req, res, pathname) => {
           role: adminUser.role,
         },
         session: {
+          token: createAdminSession(adminUser),
           email: adminUser.email,
           name: adminUser.name,
           role: adminUser.role,
@@ -176,6 +228,7 @@ const handleApi = async (req, res, pathname) => {
         role: fallbackUser.role || "admin",
       },
       session: {
+        token: createAdminSession(fallbackUser),
         email: fallbackUser.email,
         name: fallbackUser.name,
         role: fallbackUser.role || "admin",
@@ -186,6 +239,89 @@ const handleApi = async (req, res, pathname) => {
 
   if (req.method === "GET" && pathname === "/api/db") {
     sendJson(res, 200, await getSnapshot());
+    return true;
+  }
+
+  if (req.method === "GET" && pathname === "/api/admin/dashboard") {
+    if (!requireAdminSession(req, res)) {
+      return true;
+    }
+    sendJson(res, 200, await listAdminDashboardData());
+    return true;
+  }
+
+  if (req.method === "GET" && pathname === "/api/admin/health") {
+    if (!requireAdminSession(req, res)) {
+      return true;
+    }
+    sendJson(res, 200, await getAdminHealth());
+    return true;
+  }
+
+  if (req.method === "GET" && pathname === "/api/admin/users") {
+    if (!requireAdminSession(req, res)) {
+      return true;
+    }
+    sendJson(res, 200, {
+      ok: true,
+      users: await listAdminUsers(),
+    });
+    return true;
+  }
+
+  if (req.method === "GET" && pathname === "/api/admin/sync-monitoring") {
+    if (!requireAdminSession(req, res)) {
+      return true;
+    }
+    sendJson(res, 200, await listAdminSyncMonitoring());
+    return true;
+  }
+
+  if (req.method === "GET" && pathname === "/api/admin/duplicates") {
+    if (!requireAdminSession(req, res)) {
+      return true;
+    }
+    sendJson(res, 200, await listAdminDuplicateVisibility());
+    return true;
+  }
+
+  if (req.method === "GET" && pathname === "/api/admin/export/seaf") {
+    if (!requireAdminSession(req, res)) {
+      return true;
+    }
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    sendCsvDownload(res, `seaf_export_${dateStamp}.csv`, await listTableExportRows("socio"));
+    return true;
+  }
+
+  if (req.method === "GET" && pathname === "/api/admin/export/engineering") {
+    if (!requireAdminSession(req, res)) {
+      return true;
+    }
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    sendCsvDownload(res, `engineering_export_${dateStamp}.csv`, await listTableExportRows("engineering"));
+    return true;
+  }
+
+  if (req.method === "GET" && pathname === "/api/admin/export/inventory") {
+    if (!requireAdminSession(req, res)) {
+      return true;
+    }
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    sendCsvDownload(res, `inventory_export_${dateStamp}.csv`, await listTableExportRows("inventory"));
+    return true;
+  }
+
+  if (req.method === "GET" && pathname === "/api/admin/export/combined") {
+    if (!requireAdminSession(req, res)) {
+      return true;
+    }
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    sendCsvDownload(
+      res,
+      `combined_assessment_export_${dateStamp}.csv`,
+      await listCombinedExportRows()
+    );
     return true;
   }
 

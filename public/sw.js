@@ -1,4 +1,4 @@
-const APP_VERSION = "2026-04-28-01";
+const APP_VERSION = "2026-04-28-02";
 const CACHE_NAME = `assessment-forms-v${APP_VERSION}`;
 const LEGACY_CACHE_PREFIXES = ["assessment-forms-v", "app-shell-", "shehersaaz-app-", "shehersaaz-"];
 const PRECACHE_URLS = [
