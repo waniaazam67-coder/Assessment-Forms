@@ -1,0 +1,209 @@
+Shehersaaz Assessment Forms - Project Overview
+==============================================
+
+1. What this project is
+
+This project is a web-based assessment system with:
+- a backend in Node.js
+- a frontend made of static HTML/CSS/JavaScript
+- a MySQL database for storing submissions
+
+It is used to collect and manage multiple assessment stages for households:
+- Household Information
+- SEAF / Socioeconomic Assessment
+- Engineering Assessment
+- Inventory Assessment
+
+
+2. Main folders
+
+backend/
+- Contains the Node.js server and database logic.
+- This is the API layer and the part that talks to MySQL.
+
+public/
+- Contains the frontend files.
+- This is the user-facing side of the app.
+- Includes HTML pages, CSS, JavaScript, images, and the service worker.
+
+docs/
+- Contains documentation and helper/reference files.
+- Right now it includes an example SQLTools editor config file.
+
+
+3. Important backend files
+
+backend/server.js
+- Entry point used when starting the backend from the backend package.
+
+backend/src/server.js
+- Main HTTP server.
+- Handles API routes, admin login, exports, health checks, and static file serving.
+
+backend/src/db.js
+- Contains most database operations.
+- Creates schema, updates tables, saves forms, exports rows, and builds dashboard data.
+
+backend/src/config.js
+- Loads environment variables from backend/.env.
+- Defines host, port, database settings, admin fallback behavior, and security settings.
+
+backend/src/http.js
+- Shared HTTP helpers for JSON/text/download responses and static file serving.
+
+backend/sql/schema.sql
+- SQL-related schema reference file.
+
+backend/scripts/create-admin.js
+- Creates an admin user from command-line arguments.
+
+backend/scripts/seed-admin.js
+- Creates or updates an admin user from environment variables.
+
+backend/.env.example
+- Template for local or production environment configuration.
+
+
+4. Important frontend files
+
+public/pages/
+- Contains the main pages of the forms app and admin dashboard.
+
+public/assets/js/forms.js
+- Main frontend behavior for the assessment forms.
+- Handles household selection, offline state, syncing, local queueing, and form submission.
+
+public/assets/js/admin.js
+- Frontend logic for the admin dashboard.
+- Handles login, dashboard loading, exports, monitoring, and system health views.
+
+public/assets/js/app-config.js
+- App versioning and service worker registration logic.
+
+public/assets/css/forms.css
+- Styling for the assessment forms UI.
+
+public/assets/css/admin.css
+- Styling for the admin dashboard UI.
+
+public/sw.js
+- Service worker for caching app assets and helping offline support.
+
+
+5. How the system works at a high level
+
+Frontend flow:
+- Users open pages under public/pages/.
+- They fill in assessment forms in the browser.
+- The app stores important state locally for offline support.
+- When the backend is reachable, data is submitted to the API.
+
+Backend flow:
+- The backend listens on the configured host/port.
+- It serves the frontend files and API routes.
+- It validates incoming requests and writes records to MySQL.
+- It also provides admin login, reporting, health, and export endpoints.
+
+Database flow:
+- MySQL stores the form data in flat tables.
+- The backend creates missing tables and columns automatically when needed.
+- Status tracking is stored separately so the admin dashboard can show progress per household.
+
+
+6. Main database tables
+
+admin_users
+- Stores admin accounts with hashed passwords.
+
+household_info
+- Stores household information submissions.
+
+socio
+- Stores SEAF / socioeconomic assessment data.
+
+engineering
+- Stores engineering assessment data.
+
+inventory
+- Stores inventory assessment data.
+
+assessment_status
+- Stores per-household submission status for each form stage.
+
+sync_submissions
+- Stores sync history / duplicate handling metadata for offline-to-online submission flow.
+
+
+7. Admin dashboard
+
+The admin dashboard lives under:
+- public/pages/admin-dashboard/
+
+It lets admins:
+- log in
+- view dashboard summaries
+- check household progress
+- inspect sync status
+- review duplicate-prevention logs
+- export assessment datasets
+- check system health
+
+
+8. Offline support
+
+The frontend supports offline-first behavior:
+- some data is stored in IndexedDB
+- some legacy data may also exist in localStorage/sessionStorage
+- pending submissions can be queued locally
+- when connectivity returns, the app attempts to sync data to the backend
+
+This means the app is designed for field usage where internet may not always be stable.
+
+
+9. How to run locally
+
+General local flow:
+- create backend/.env from backend/.env.example
+- set your MySQL connection values
+- install backend dependencies
+- start the app
+- open the frontend in the browser through the backend server
+
+Typical local URL:
+- http://127.0.0.1:4000/pages/index.html
+
+Admin login page:
+- http://127.0.0.1:4000/pages/admin-dashboard/index.html
+
+
+10. Production notes
+
+Before production deployment, confirm:
+- backend/.env is configured correctly
+- DB credentials are real and secure
+- ALLOWED_ORIGINS is set correctly
+- fallback env admin login is disabled unless intentionally needed
+- at least one real admin user exists in admin_users
+- MySQL is reachable from the deployed backend
+- export/admin routes are protected
+- logs, editor files, and generated output are not deployed accidentally
+
+
+11. Current repository cleanup status
+
+Already cleaned:
+- output/ folder removed
+- .vscode/ folder removed from the project root
+
+Kept intentionally:
+- docs/vscode/sqltools.settings.example.json as a reference-only editor config example
+
+
+12. In short
+
+This project is a full assessment platform where:
+- public/ is the frontend
+- backend/ is the server and database layer
+- MySQL is the source of stored submissions
+- the admin dashboard is used for review, export, and monitoring
+- offline sync is an important feature of the field workflow

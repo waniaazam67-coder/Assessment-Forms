@@ -1,32 +1,55 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const sendHeaders = {
+const {
+  allowedOrigins,
+} = require("./config");
+
+const baseHeaders = {
   "Cache-Control": "no-store",
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
 };
 
-const sendJson = (res, statusCode, data) => {
+const getOriginHeader = (req) => String(req?.headers?.origin || "").trim();
+
+const getResponseHeaders = (req, extraHeaders = {}) => {
+  const origin = getOriginHeader(req);
+  const headers = {
+    ...baseHeaders,
+    ...extraHeaders,
+  };
+
+  if (origin && allowedOrigins.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers.Vary = "Origin";
+  }
+
+  return headers;
+};
+
+const sendJson = (req, res, statusCode, data) => {
   res.writeHead(statusCode, {
-    ...sendHeaders,
+    ...getResponseHeaders(req),
     "Content-Type": "application/json; charset=utf-8",
   });
   res.end(JSON.stringify(data));
 };
 
-const sendText = (res, statusCode, text, contentType = "text/plain; charset=utf-8") => {
+const sendText = (req, res, statusCode, text, contentType = "text/plain; charset=utf-8") => {
   res.writeHead(statusCode, {
-    ...sendHeaders,
+    ...getResponseHeaders(req),
     "Content-Type": contentType,
   });
   res.end(text);
 };
 
-const sendDownload = (res, statusCode, body, filename, contentType) => {
+const sendDownload = (req, res, statusCode, body, filename, contentType) => {
   res.writeHead(statusCode, {
-    ...sendHeaders,
+    ...getResponseHeaders(req),
     "Content-Type": contentType,
     "Content-Disposition": `attachment; filename="${filename}"`,
   });
@@ -91,7 +114,7 @@ const serveStatic = (req, res, pathname, projectRoot) => {
   if (relativePath === "/") {
     res.writeHead(302, {
       Location: "/pages/index.html",
-      ...sendHeaders,
+      ...getResponseHeaders(req),
     });
     res.end();
     return true;
@@ -112,14 +135,15 @@ const serveStatic = (req, res, pathname, projectRoot) => {
 
   const body = fs.readFileSync(filePath);
   res.writeHead(200, {
+    ...getResponseHeaders(req),
     "Content-Type": getContentType(filePath),
-    "Cache-Control": "no-store",
   });
   res.end(body);
   return true;
 };
 
 module.exports = {
+  getResponseHeaders,
   sendJson,
   sendText,
   sendDownload,

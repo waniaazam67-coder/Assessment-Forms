@@ -2,6 +2,9 @@ backend/.env
 backend/node_modules
 node_modules
 .env
+.vscode/
+output/
 *.log
+*.session.sql
 *-export-test.csv
 *-export-test.json

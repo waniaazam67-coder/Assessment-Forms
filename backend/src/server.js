@@ -1,7 +1,8 @@
 const http = require("node:http");
+const crypto = require("node:crypto");
 const { URL } = require("node:url");
 const bcrypt = require("bcryptjs");
-const { frontendDir, host, port, management } = require("./config");
+const { frontendDir, host, port, management, security, isProduction } = require("./config");
 const {
   healthCheck,
   initializeDatabase,
@@ -22,7 +23,7 @@ const {
   upsertHousehold,
   submitForm,
 } = require("./db");
-const { sendJson, sendText, sendDownload, readRequestBody, serveStatic } = require("./http");
+const { getResponseHeaders, sendJson, sendText, sendDownload, readRequestBody, serveStatic } = require("./http");
 
 const allowedForms = new Set(["household", "seaf", "socio", "engineering", "inventory"]);
 const exportableDatasets = new Set([
@@ -39,6 +40,7 @@ const exportableDatasets = new Set([
 ]);
 
 const adminSessions = new Map();
+const failedAdminLogins = new Map();
 
 const escapeCsvValue = (value) => {
   const normalized = value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
@@ -90,26 +92,71 @@ const toFormSubmissionRows = (formSubmissions = {}) => {
   return rows;
 };
 
-const generateAdminSessionToken = () =>
-  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+const generateAdminSessionToken = () => crypto.randomBytes(32).toString("hex");
+
+const getClientIp = (req) =>
+  String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "")
+    .split(",")[0]
+    .trim();
+
+const getFailedLoginKey = (req, email) => `${getClientIp(req)}:${String(email || "").trim().toLowerCase()}`;
+
+const clearExpiredLoginAttempts = (now = Date.now()) => {
+  for (const [key, entry] of failedAdminLogins.entries()) {
+    if (!entry || now - entry.firstFailedAt > security.loginWindowMs) {
+      failedAdminLogins.delete(key);
+    }
+  }
+};
+
+const getFailedLoginState = (req, email) => {
+  const now = Date.now();
+  clearExpiredLoginAttempts(now);
+  return failedAdminLogins.get(getFailedLoginKey(req, email)) || null;
+};
+
+const registerFailedLogin = (req, email) => {
+  const key = getFailedLoginKey(req, email);
+  const now = Date.now();
+  const current = getFailedLoginState(req, email);
+  failedAdminLogins.set(key, {
+    count: Number(current?.count || 0) + 1,
+    firstFailedAt: current?.firstFailedAt || now,
+    lastFailedAt: now,
+  });
+};
+
+const clearFailedLogin = (req, email) => {
+  failedAdminLogins.delete(getFailedLoginKey(req, email));
+};
 
 const createAdminSession = (user = {}) => {
   const token = generateAdminSessionToken();
+  const expiresAt = Date.now() + security.sessionTtlMs;
   adminSessions.set(token, {
     email: user.email || "",
     name: user.name || "",
     role: user.role || "admin",
     createdAt: new Date().toISOString(),
+    expiresAt,
   });
   return token;
 };
 
+const clearExpiredAdminSessions = (now = Date.now()) => {
+  for (const [token, session] of adminSessions.entries()) {
+    if (!session?.expiresAt || session.expiresAt <= now) {
+      adminSessions.delete(token);
+    }
+  }
+};
+
 const getAdminSessionFromRequest = (req) => {
+  clearExpiredAdminSessions();
   const authorizationHeader = String(req.headers.authorization || "");
   const bearerMatch = authorizationHeader.match(/^Bearer\s+(.+)$/i);
   const headerToken = bearerMatch?.[1]?.trim();
-  const queryToken = new URL(req.url || "/", `http://${req.headers.host || `${host}:${port}`}`).searchParams.get("adminToken");
-  const token = String(headerToken || queryToken || "").trim();
+  const token = String(headerToken || "").trim();
 
   if (!token) {
     return null;
@@ -121,15 +168,15 @@ const getAdminSessionFromRequest = (req) => {
 const requireAdminSession = (req, res) => {
   const session = getAdminSessionFromRequest(req);
   if (!session) {
-    sendJson(res, 401, { error: "Admin authentication required." });
+    sendJson(req, res, 401, { error: "Admin authentication required." });
     return null;
   }
 
   return session;
 };
 
-const sendCsvDownload = (res, filename, rows) => {
-  sendDownload(res, 200, toCsv(rows), filename, "text/csv; charset=utf-8");
+const sendCsvDownload = (req, res, filename, rows) => {
+  sendDownload(req, res, 200, toCsv(rows), filename, "text/csv; charset=utf-8");
 };
 
 const getExportPayload = async (snapshot, dataset) => {
@@ -158,13 +205,14 @@ const getExportPayload = async (snapshot, dataset) => {
 
 const handleApi = async (req, res, pathname) => {
   if (req.method === "OPTIONS") {
-    sendText(res, 204, "");
+    res.writeHead(204, getResponseHeaders(req));
+    res.end();
     return true;
   }
 
   if (req.method === "GET" && pathname === "/api/health") {
     const ok = await healthCheck();
-    sendJson(res, ok ? 200 : 503, {
+    sendJson(req, res, ok ? 200 : 503, {
       ok,
       timestamp: new Date().toISOString(),
     });
@@ -177,7 +225,15 @@ const handleApi = async (req, res, pathname) => {
     const password = String(body?.password || "");
 
     if (!email || !password) {
-      sendJson(res, 400, { error: "Email and password are required." });
+      sendJson(req, res, 400, { error: "Email and password are required." });
+      return true;
+    }
+
+    const loginState = getFailedLoginState(req, email);
+    if (loginState && loginState.count >= security.maxLoginAttempts) {
+      sendJson(req, res, 429, {
+        error: "Too many failed login attempts. Please wait before trying again.",
+      });
       return true;
     }
 
@@ -185,17 +241,19 @@ const handleApi = async (req, res, pathname) => {
 
     if (adminUser) {
       if (!adminUser.is_active) {
-        sendJson(res, 403, { error: "Admin user is inactive." });
+        sendJson(req, res, 403, { error: "Admin user is inactive." });
         return true;
       }
 
       const passwordMatches = await bcrypt.compare(password, adminUser.password_hash);
       if (!passwordMatches) {
-        sendJson(res, 401, { error: "Invalid management credentials." });
+        registerFailedLogin(req, email);
+        sendJson(req, res, 401, { error: "Invalid management credentials." });
         return true;
       }
 
-      sendJson(res, 200, {
+      clearFailedLogin(req, email);
+      sendJson(req, res, 200, {
         ok: true,
         user: {
           email: adminUser.email,
@@ -216,11 +274,13 @@ const handleApi = async (req, res, pathname) => {
     const fallbackUser = management.user;
 
     if (adminUserCount > 0 || !fallbackUser || fallbackUser.email !== email || fallbackUser.password !== password) {
-      sendJson(res, 401, { error: "Invalid management credentials." });
+      registerFailedLogin(req, email);
+      sendJson(req, res, 401, { error: "Invalid management credentials." });
       return true;
     }
 
-    sendJson(res, 200, {
+    clearFailedLogin(req, email);
+    sendJson(req, res, 200, {
       ok: true,
       user: {
         email: fallbackUser.email,
@@ -238,7 +298,10 @@ const handleApi = async (req, res, pathname) => {
   }
 
   if (req.method === "GET" && pathname === "/api/db") {
-    sendJson(res, 200, await getSnapshot());
+    if (!requireAdminSession(req, res)) {
+      return true;
+    }
+    sendJson(req, res, 200, await getSnapshot());
     return true;
   }
 
@@ -246,7 +309,7 @@ const handleApi = async (req, res, pathname) => {
     if (!requireAdminSession(req, res)) {
       return true;
     }
-    sendJson(res, 200, await listAdminDashboardData());
+    sendJson(req, res, 200, await listAdminDashboardData());
     return true;
   }
 
@@ -254,7 +317,7 @@ const handleApi = async (req, res, pathname) => {
     if (!requireAdminSession(req, res)) {
       return true;
     }
-    sendJson(res, 200, await getAdminHealth());
+    sendJson(req, res, 200, await getAdminHealth());
     return true;
   }
 
@@ -262,7 +325,7 @@ const handleApi = async (req, res, pathname) => {
     if (!requireAdminSession(req, res)) {
       return true;
     }
-    sendJson(res, 200, {
+    sendJson(req, res, 200, {
       ok: true,
       users: await listAdminUsers(),
     });
@@ -273,7 +336,7 @@ const handleApi = async (req, res, pathname) => {
     if (!requireAdminSession(req, res)) {
       return true;
     }
-    sendJson(res, 200, await listAdminSyncMonitoring());
+    sendJson(req, res, 200, await listAdminSyncMonitoring());
     return true;
   }
 
@@ -281,7 +344,7 @@ const handleApi = async (req, res, pathname) => {
     if (!requireAdminSession(req, res)) {
       return true;
     }
-    sendJson(res, 200, await listAdminDuplicateVisibility());
+    sendJson(req, res, 200, await listAdminDuplicateVisibility());
     return true;
   }
 
@@ -290,7 +353,7 @@ const handleApi = async (req, res, pathname) => {
       return true;
     }
     const dateStamp = new Date().toISOString().slice(0, 10);
-    sendCsvDownload(res, `seaf_export_${dateStamp}.csv`, await listTableExportRows("socio"));
+    sendCsvDownload(req, res, `seaf_export_${dateStamp}.csv`, await listTableExportRows("socio"));
     return true;
   }
 
@@ -299,7 +362,7 @@ const handleApi = async (req, res, pathname) => {
       return true;
     }
     const dateStamp = new Date().toISOString().slice(0, 10);
-    sendCsvDownload(res, `engineering_export_${dateStamp}.csv`, await listTableExportRows("engineering"));
+    sendCsvDownload(req, res, `engineering_export_${dateStamp}.csv`, await listTableExportRows("engineering"));
     return true;
   }
 
@@ -308,7 +371,7 @@ const handleApi = async (req, res, pathname) => {
       return true;
     }
     const dateStamp = new Date().toISOString().slice(0, 10);
-    sendCsvDownload(res, `inventory_export_${dateStamp}.csv`, await listTableExportRows("inventory"));
+    sendCsvDownload(req, res, `inventory_export_${dateStamp}.csv`, await listTableExportRows("inventory"));
     return true;
   }
 
@@ -318,6 +381,7 @@ const handleApi = async (req, res, pathname) => {
     }
     const dateStamp = new Date().toISOString().slice(0, 10);
     sendCsvDownload(
+      req,
       res,
       `combined_assessment_export_${dateStamp}.csv`,
       await listCombinedExportRows()
@@ -326,22 +390,25 @@ const handleApi = async (req, res, pathname) => {
   }
 
   if (req.method === "GET" && pathname === "/api/export") {
+    if (!requireAdminSession(req, res)) {
+      return true;
+    }
     const requestUrl = new URL(req.url || "/", `http://${req.headers.host || `${host}:${port}`}`);
     const dataset = String(requestUrl.searchParams.get("dataset") || "households").trim().toLowerCase();
     const format = String(requestUrl.searchParams.get("format") || "json").trim().toLowerCase();
 
     if (!exportableDatasets.has(dataset)) {
-      sendJson(res, 400, { error: "Unsupported export dataset." });
+      sendJson(req, res, 400, { error: "Unsupported export dataset." });
       return true;
     }
 
     if (!["json", "csv"].includes(format)) {
-      sendJson(res, 400, { error: "Unsupported export format." });
+      sendJson(req, res, 400, { error: "Unsupported export format." });
       return true;
     }
 
     if (dataset === "snapshot" && format === "csv") {
-      sendJson(res, 400, { error: "Snapshot export is only available as JSON." });
+      sendJson(req, res, 400, { error: "Snapshot export is only available as JSON." });
       return true;
     }
 
@@ -351,6 +418,7 @@ const handleApi = async (req, res, pathname) => {
 
     if (format === "json") {
       sendDownload(
+        req,
         res,
         200,
         `${JSON.stringify(payload, null, 2)}\n`,
@@ -362,6 +430,7 @@ const handleApi = async (req, res, pathname) => {
 
     const rows = Array.isArray(payload) ? payload : [];
     sendDownload(
+      req,
       res,
       200,
       toCsv(rows),
@@ -372,25 +441,25 @@ const handleApi = async (req, res, pathname) => {
   }
 
   if (req.method === "GET" && pathname === "/api/households") {
-    sendJson(res, 200, await listHouseholds());
+    sendJson(req, res, 200, await listHouseholds());
     return true;
   }
 
   if (req.method === "POST" && pathname === "/api/households") {
     const body = await readRequestBody(req);
     if (!body || typeof body !== "object") {
-      sendJson(res, 400, { error: "Invalid JSON body." });
+      sendJson(req, res, 400, { error: "Invalid JSON body." });
       return true;
     }
 
     const householdId = String(body.householdId || "").trim();
     if (!householdId) {
-      sendJson(res, 400, { error: "householdId is required." });
+      sendJson(req, res, 400, { error: "householdId is required." });
       return true;
     }
 
     const record = await upsertHousehold(householdId, body);
-    sendJson(res, 200, record);
+    sendJson(req, res, 200, record);
     return true;
   }
 
@@ -398,11 +467,11 @@ const handleApi = async (req, res, pathname) => {
     const householdId = decodeURIComponent(pathname.replace("/api/households/", ""));
     const record = await getHouseholdById(householdId);
     if (!record) {
-      sendJson(res, 404, { error: "Household not found." });
+      sendJson(req, res, 404, { error: "Household not found." });
       return true;
     }
 
-    sendJson(res, 200, record);
+    sendJson(req, res, 200, record);
     return true;
   }
 
@@ -411,19 +480,19 @@ const handleApi = async (req, res, pathname) => {
     const formKey = parts[2];
 
     if (!allowedForms.has(formKey)) {
-      sendJson(res, 400, { error: "Unsupported form key." });
+      sendJson(req, res, 400, { error: "Unsupported form key." });
       return true;
     }
 
     const body = await readRequestBody(req);
     if (!body || typeof body !== "object") {
-      sendJson(res, 400, { error: "Invalid JSON body." });
+      sendJson(req, res, 400, { error: "Invalid JSON body." });
       return true;
     }
 
     const householdId = String(body.householdId || "").trim();
     if (!householdId) {
-      sendJson(res, 400, { error: "householdId is required." });
+      sendJson(req, res, 400, { error: "householdId is required." });
       return true;
     }
 
@@ -439,7 +508,7 @@ const handleApi = async (req, res, pathname) => {
       httpMethod: req.method || "POST",
     });
 
-    sendJson(res, 200, result);
+    sendJson(req, res, 200, result);
     return true;
   }
 
@@ -449,12 +518,12 @@ const handleApi = async (req, res, pathname) => {
     const householdId = parts[3];
 
     if (!allowedForms.has(formKey) || !householdId) {
-      sendJson(res, 400, { error: "Invalid form lookup." });
+      sendJson(req, res, 400, { error: "Invalid form lookup." });
       return true;
     }
 
     const entry = await getFormSubmission(formKey, householdId);
-    sendJson(res, 200, entry);
+    sendJson(req, res, 200, entry);
     return true;
   }
 
@@ -478,11 +547,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    sendText(res, 404, "Not found");
+    sendText(req, res, 404, "Not found");
   } catch (error) {
-    sendJson(res, 500, {
+    sendJson(req, res, 500, {
       error: "Internal server error.",
-      message: error instanceof Error ? error.message : String(error),
+      ...(isProduction ? {} : { message: error instanceof Error ? error.message : String(error) }),
     });
   }
 });
