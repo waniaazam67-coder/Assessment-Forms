@@ -16,8 +16,34 @@ const householdRecordsStorageKey = "shehersaaz-household-records";
 const pendingSyncQueueStorageKey = "shehersaaz-pending-sync-queue";
 const localSubmissionStatusesStorageKey = "shehersaaz-local-submission-statuses";
 const lastSuccessfulSyncStorageKey = "shehersaaz-last-successful-sync-at";
+const generatedIdsStorageKey = "shehersaaz-generated-household-ids";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
-const frontendAssetVersion = "v4";
+const frontendAssetVersion = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-04-28-01";
+const formsHomeUrl = window.__SHEHERSAAZ_APP__?.versionedPath?.("/pages/index.html") || `/pages/index.html?v=${frontendAssetVersion}`;
+const offlineStateDbName = "shehersaaz-offline-state";
+const offlineStateStoreName = "kv";
+const offlineStateDbVersion = 1;
+const offlineStateDefaults = {
+  eligibleHouseholds: [],
+  submittedForms: {},
+  seafResponses: {},
+  householdRecords: [],
+  generatedIds: [],
+  localSubmissionStatuses: {},
+  lastSuccessfulSyncAt: "",
+};
+const offlineStateKeyMap = {
+  [eligibleHouseholdsStorageKey]: "eligibleHouseholds",
+  [submittedFormsStorageKey]: "submittedForms",
+  [seafResponsesStorageKey]: "seafResponses",
+  [householdRecordsStorageKey]: "householdRecords",
+  [generatedIdsStorageKey]: "generatedIds",
+  [localSubmissionStatusesStorageKey]: "localSubmissionStatuses",
+  [lastSuccessfulSyncStorageKey]: "lastSuccessfulSyncAt",
+};
+const offlineState = { ...offlineStateDefaults };
+let offlineStateDbPromise = null;
+let offlineStateReadyPromise = null;
 
 const getConfiguredApiBaseUrl = () => {
   const metaTag = document.querySelector('meta[name="api-base-url"]');
@@ -55,33 +81,149 @@ const getApiBaseUrlCandidates = () => {
 const backendBaseUrls = getApiBaseUrlCandidates();
 const backendBaseUrl = backendBaseUrls[0];
 
-if ("serviceWorker" in navigator && window.location.protocol !== "file:" && !isLocalFrontendDev) {
-  window.addEventListener("load", () => {
-    (async () => {
-      try {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(
-          registrations
-            .filter((registration) => {
-              try {
-                const scriptUrl = registration.active?.scriptURL || registration.waiting?.scriptURL || registration.installing?.scriptURL || "";
-                return scriptUrl && !scriptUrl.endsWith(`/sw.js?v=${frontendAssetVersion}`) && !scriptUrl.endsWith("/sw.js");
-              } catch (error) {
-                return false;
-              }
-            })
-            .map((registration) => registration.unregister())
-        );
+const cloneOfflineValue = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((entry) => (entry && typeof entry === "object" ? { ...entry } : entry));
+  }
 
-        await navigator.serviceWorker.register(`/sw.js?v=${frontendAssetVersion}`, {
-          updateViaCache: "none",
-        });
-      } catch (error) {
-        console.warn("Service worker registration failed:", error);
-      }
-    })();
+  if (value && typeof value === "object") {
+    return { ...value };
+  }
+
+  return value;
+};
+
+const openOfflineStateDatabase = () => {
+  if (!("indexedDB" in window)) {
+    return Promise.resolve(null);
+  }
+
+  if (!offlineStateDbPromise) {
+    offlineStateDbPromise = new Promise((resolve, reject) => {
+      const request = window.indexedDB.open(offlineStateDbName, offlineStateDbVersion);
+
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(offlineStateStoreName)) {
+          db.createObjectStore(offlineStateStoreName, { keyPath: "key" });
+        }
+      };
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    }).catch(() => null);
+  }
+
+  return offlineStateDbPromise;
+};
+
+const withOfflineStateStore = async (mode, handler) => {
+  const db = await openOfflineStateDatabase();
+  if (!db) {
+    return handler(null);
+  }
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(offlineStateStoreName, mode);
+    const store = transaction.objectStore(offlineStateStoreName);
+    let result;
+
+    transaction.oncomplete = () => resolve(result);
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error("Offline state transaction aborted."));
+
+    Promise.resolve(handler(store, transaction))
+      .then((value) => {
+        result = value;
+      })
+      .catch((error) => reject(error));
   });
-}
+};
+
+const readLegacyOfflineStateValue = (storageKey, fallback) => {
+  try {
+    const rawValue = localStorage.getItem(storageKey);
+    if (!rawValue) {
+      return fallback;
+    }
+
+    return JSON.parse(rawValue);
+  } catch (error) {
+    return fallback;
+  }
+};
+
+const persistOfflineStateValue = (stateKey, value) =>
+  withOfflineStateStore("readwrite", (store) => {
+    if (!store) {
+      return null;
+    }
+
+    return new Promise((resolve, reject) => {
+      const request = store.put({
+        key: stateKey,
+        value: cloneOfflineValue(value),
+        updatedAt: new Date().toISOString(),
+      });
+      request.onsuccess = () => resolve(true);
+      request.onerror = () => reject(request.error);
+    });
+  }).catch(() => null);
+
+const loadOfflineState = async () => {
+  const db = await openOfflineStateDatabase();
+
+  if (db) {
+    const storedEntries = await withOfflineStateStore("readonly", (store) =>
+      new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+        request.onerror = () => reject(request.error);
+      })
+    ).catch(() => []);
+
+    storedEntries.forEach((entry) => {
+      if (entry?.key && Object.prototype.hasOwnProperty.call(offlineStateDefaults, entry.key)) {
+        offlineState[entry.key] = cloneOfflineValue(entry.value ?? offlineStateDefaults[entry.key]);
+      }
+    });
+  }
+
+  Object.entries(offlineStateKeyMap).forEach(([storageKey, stateKey]) => {
+    const currentValue = offlineState[stateKey];
+    const hasCurrentValue = Array.isArray(currentValue)
+      ? currentValue.length > 0
+      : currentValue && typeof currentValue === "object"
+        ? Object.keys(currentValue).length > 0
+        : Boolean(currentValue);
+
+    if (!hasCurrentValue) {
+      offlineState[stateKey] = cloneOfflineValue(readLegacyOfflineStateValue(storageKey, offlineStateDefaults[stateKey]));
+    }
+
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      // Ignore legacy localStorage cleanup errors.
+    }
+  });
+
+  await Promise.all(
+    Object.values(offlineStateKeyMap).map((stateKey) => persistOfflineStateValue(stateKey, offlineState[stateKey]))
+  );
+
+  return offlineState;
+};
+
+const ensureOfflineStateReady = () => {
+  if (!offlineStateReadyPromise) {
+    offlineStateReadyPromise = loadOfflineState().catch(() => offlineState);
+  }
+
+  return offlineStateReadyPromise;
+};
+
+window.__SHEHERSAAZ_APP__?.registerServiceWorker?.();
 
 if (manualDialog && openManualButton && closeManualButton) {
   openManualButton.addEventListener("click", () => {
@@ -107,41 +249,27 @@ if (manualDialog && openManualButton && closeManualButton) {
 }
 
 const readEligibleHouseholds = () => {
-  try {
-    const storedHouseholds = localStorage.getItem(eligibleHouseholdsStorageKey);
-    const parsedHouseholds = storedHouseholds ? JSON.parse(storedHouseholds) : [];
-    return Array.isArray(parsedHouseholds) ? parsedHouseholds : [];
-  } catch (error) {
-    return [];
-  }
+  return Array.isArray(offlineState.eligibleHouseholds) ? offlineState.eligibleHouseholds : [];
 };
 
 const readSubmittedForms = () => {
-  try {
-    const storedStatuses = localStorage.getItem(submittedFormsStorageKey);
-    const parsedStatuses = storedStatuses ? JSON.parse(storedStatuses) : {};
-    return parsedStatuses && typeof parsedStatuses === "object" ? parsedStatuses : {};
-  } catch (error) {
-    return {};
-  }
+  return offlineState.submittedForms && typeof offlineState.submittedForms === "object" ? offlineState.submittedForms : {};
 };
 
 const writeSubmittedForms = (data) => {
-  localStorage.setItem(submittedFormsStorageKey, JSON.stringify(data));
+  offlineState.submittedForms = data && typeof data === "object" ? data : {};
+  void persistOfflineStateValue("submittedForms", offlineState.submittedForms);
 };
 
 const readLocalSubmissionStatuses = () => {
-  try {
-    const storedStatuses = localStorage.getItem(localSubmissionStatusesStorageKey);
-    const parsedStatuses = storedStatuses ? JSON.parse(storedStatuses) : {};
-    return parsedStatuses && typeof parsedStatuses === "object" ? parsedStatuses : {};
-  } catch (error) {
-    return {};
-  }
+  return offlineState.localSubmissionStatuses && typeof offlineState.localSubmissionStatuses === "object"
+    ? offlineState.localSubmissionStatuses
+    : {};
 };
 
 const writeLocalSubmissionStatuses = (data) => {
-  localStorage.setItem(localSubmissionStatusesStorageKey, JSON.stringify(data));
+  offlineState.localSubmissionStatuses = data && typeof data === "object" ? data : {};
+  void persistOfflineStateValue("localSubmissionStatuses", offlineState.localSubmissionStatuses);
 };
 
 const saveLocalSubmissionStatus = (submission = {}) => {
@@ -179,10 +307,11 @@ const getLatestSubmissionStatusForItem = (householdId, formType) => {
 };
 
 const setLastSuccessfulSyncTime = (value = new Date().toISOString()) => {
-  localStorage.setItem(lastSuccessfulSyncStorageKey, value);
+  offlineState.lastSuccessfulSyncAt = value;
+  void persistOfflineStateValue("lastSuccessfulSyncAt", offlineState.lastSuccessfulSyncAt);
 };
 
-const getLastSuccessfulSyncTime = () => localStorage.getItem(lastSuccessfulSyncStorageKey) || "";
+const getLastSuccessfulSyncTime = () => offlineState.lastSuccessfulSyncAt || "";
 
 const normalizeSubmissionStatusValue = (value) => (value === "Submitted" ? "Submitted" : "Pending");
 
@@ -236,22 +365,17 @@ const mergeSubmittedFormsRecords = (...sources) => {
 };
 
 const readHouseholdRecords = () => {
-  try {
-    const storedRecords = localStorage.getItem(householdRecordsStorageKey);
-    const parsedRecords = storedRecords ? JSON.parse(storedRecords) : [];
-    return Array.isArray(parsedRecords) ? parsedRecords : [];
-  } catch (error) {
-    return [];
-  }
+  return Array.isArray(offlineState.householdRecords) ? offlineState.householdRecords : [];
 };
 
 const writeHouseholdRecords = (records) => {
-  localStorage.setItem(householdRecordsStorageKey, JSON.stringify(records));
+  offlineState.householdRecords = Array.isArray(records) ? records : [];
+  void persistOfflineStateValue("householdRecords", offlineState.householdRecords);
 };
 
 const syncQueueDbName = "shehersaaz-sync-queue";
 const syncQueueStoreName = "submissions";
-const syncQueueDbVersion = 1;
+const syncQueueDbVersion = 2;
 const syncStatusValues = {
   draft: "draft",
   pending: "pending",
@@ -339,6 +463,22 @@ const logEligibleHouseholdCounts = (households = []) => {
   console.log("Eligible for SEAF:", eligibleForSeaf.length);
   console.log("Eligible for Engineering:", eligibleForEngineering.length);
   console.log("Eligible for Inventory:", eligibleForInventory.length);
+};
+
+const getExcludedHouseholdIdsForForm = (households = [], formKey = "", useLocalFallback = false) => {
+  if (!formKey || formKey === "household") {
+    return [];
+  }
+
+  const submittedForms = useLocalFallback ? readSubmittedForms() : {};
+  return households
+    .filter((household) => {
+      const backendStageSubmitted = getStageSubmissionFlag(household, formKey);
+      const localStageSubmitted = useLocalFallback && hasSubmittedForm(submittedForms[household?.householdId], formKey);
+      return backendStageSubmitted || localStageSubmitted;
+    })
+    .map((household) => household.householdId)
+    .filter(Boolean);
 };
 
 const createLocalSubmissionId = () => {
@@ -445,6 +585,29 @@ const getSyncQueueItem = async (localSubmissionId) => {
   );
 };
 
+const deleteSyncQueueItem = async (localSubmissionId) => {
+  if (!localSubmissionId) {
+    return false;
+  }
+
+  const db = await openSyncQueueDatabase();
+  if (!db) {
+    const nextQueue = getStructuredQueueFromLocalStorage().filter((entry) => entry.localSubmissionId !== localSubmissionId);
+    setStructuredQueueInLocalStorage(nextQueue);
+    return true;
+  }
+
+  await withSyncQueueStore("readwrite", (store) =>
+    new Promise((resolve, reject) => {
+      const request = store.delete(localSubmissionId);
+      request.onsuccess = () => resolve(true);
+      request.onerror = () => reject(request.error);
+    })
+  );
+
+  return true;
+};
+
 const putSyncQueueItem = async (item) => {
   const normalizedItem = {
     ...item,
@@ -501,6 +664,32 @@ const getSyncStatusBadgeLabel = (status) => {
   }
 };
 
+const getUserFacingFormStatus = (rawStatus) => {
+  const status = String(rawStatus || "").trim().toLowerCase();
+
+  if (["submitted", "complete", "completed", "synced", "true"].includes(status)) {
+    return "Submitted";
+  }
+
+  if (["pending", "pending_sync"].includes(status)) {
+    return "Pending Sync";
+  }
+
+  if (status === "syncing") {
+    return "Syncing";
+  }
+
+  if (["failed", "failed_sync"].includes(status)) {
+    return "Failed Sync";
+  }
+
+  return "Not Submitted";
+};
+
+const getUserFacingFormStatusTone = (rawStatus) => {
+  return getUserFacingFormStatus(rawStatus) === "Submitted" ? "is-submitted" : "is-pending";
+};
+
 const getCurrentFormType = () => {
   const pathname = window.location.pathname.toLowerCase();
   if (pathname.endsWith("/socioeconomic-assessment.html")) {
@@ -535,10 +724,13 @@ const getCurrentFormSyncState = () => {
 
   const localStatus = getLatestSubmissionStatusForItem(householdId, formType);
   const syncStatus = localStatus?.syncStatus || syncStatusValues.draft;
+  const submittedForms = readSubmittedForms();
+  const stageStatus = submittedForms[householdId]?.[formType] || syncStatus;
   return {
     ...localStatus,
+    stageStatus,
     syncStatus,
-    badgeLabel: getSyncStatusBadgeLabel(syncStatus),
+    badgeLabel: getUserFacingFormStatus(stageStatus),
   };
 };
 
@@ -649,17 +841,11 @@ const ensureSyncStatusWidget = () => {
   widget.innerHTML = `
     <div class="sync-status-widget__row">
       <span class="sync-status-widget__badge" data-sync-network-status>Online</span>
-      <span class="sync-status-widget__count" data-sync-pending-count>0 pending</span>
-    </div>
-    <div class="sync-status-widget__row">
-      <span class="sync-status-widget__label">Form status</span>
-      <span class="sync-status-widget__state is-draft" data-sync-form-status>Draft</span>
     </div>
     <div class="sync-status-widget__meta">
       <span class="sync-status-widget__meta-label">Last sync</span>
       <span data-sync-last-time>Never</span>
     </div>
-    <p class="sync-status-widget__message" data-sync-status-message>Backend sync ready.</p>
     <button class="sync-status-widget__button" type="button" data-sync-now-button>Sync now</button>
   `;
 
@@ -705,26 +891,12 @@ const updateSyncStatusWidget = async () => {
   }
 
   const networkBadge = widget.querySelector("[data-sync-network-status]");
-  const pendingCount = widget.querySelector("[data-sync-pending-count]");
-  const formStatus = widget.querySelector("[data-sync-form-status]");
   const lastSyncTime = widget.querySelector("[data-sync-last-time]");
 
   if (networkBadge) {
     const isOnline = navigator.onLine;
     networkBadge.textContent = isOnline ? "Online" : "Offline";
     networkBadge.classList.toggle("is-offline", !isOnline);
-  }
-
-  if (pendingCount) {
-    const count = await getPendingSyncQueueCount();
-    pendingCount.textContent = `${count} pending`;
-  }
-
-  if (formStatus) {
-    const currentState = getCurrentFormSyncState();
-    const syncStatus = currentState?.syncStatus || syncStatusValues.draft;
-    formStatus.textContent = currentState?.badgeLabel || "Draft";
-    formStatus.className = `sync-status-widget__state is-${syncStatus}`;
   }
 
   if (lastSyncTime) {
@@ -811,6 +983,8 @@ const syncQueuedSubmission = async (queueItem, options = {}) => {
     });
     setLastSuccessfulSyncTime();
     await confirmSyncedQueueItem(syncingItem);
+    await deleteSyncQueueItem(syncingItem.localSubmissionId);
+    await syncSharedHouseholdStateFromBackend();
 
     await updateSyncStatusWidget();
     if (!options.silent) {
@@ -946,6 +1120,10 @@ const buildSubmittedFormsFromHouseholds = (households = []) => {
 };
 
 const syncSharedHouseholdStateFromBackend = async () => {
+  if (!navigator.onLine) {
+    return null;
+  }
+
   try {
     const households = await apiJsonRequest(buildFreshApiPath("/api/households"), {
       cache: "no-store",
@@ -959,13 +1137,15 @@ const syncSharedHouseholdStateFromBackend = async () => {
     );
     const normalizedEligibleHouseholds = mergeEligibleHouseholds(eligibleHouseholds);
     logEligibleHouseholdCounts(normalizedEligibleHouseholds);
-    localStorage.setItem(eligibleHouseholdsStorageKey, JSON.stringify(normalizedEligibleHouseholds));
+    offlineState.eligibleHouseholds = normalizedEligibleHouseholds;
+    void persistOfflineStateValue("eligibleHouseholds", offlineState.eligibleHouseholds);
 
     const backendSubmittedForms = buildSubmittedFormsFromHouseholds(households);
     const mergedSubmittedForms = mergeSubmittedFormsRecords(readSubmittedForms(), backendSubmittedForms);
     writeSubmittedForms(mergedSubmittedForms);
 
     return {
+      source: "backend",
       households,
       eligibleHouseholds: normalizedEligibleHouseholds,
       submittedForms: mergedSubmittedForms,
@@ -979,13 +1159,21 @@ const getEligibleHouseholdsForPicker = async () => {
   try {
     const syncedState = await syncSharedHouseholdStateFromBackend();
     if (syncedState?.eligibleHouseholds) {
-      return syncedState.eligibleHouseholds;
+      console.log("Using backend households for eligibility");
+      return {
+        source: "backend",
+        households: syncedState.eligibleHouseholds,
+      };
     }
   } catch (error) {
     // Fall through to cached local data.
   }
 
-  return mergeEligibleHouseholds(readEligibleHouseholds());
+  console.log("Using IndexedDB fallback for eligibility");
+  return {
+    source: "cache",
+    households: mergeEligibleHouseholds(readEligibleHouseholds()),
+  };
 };
 
 const flushPendingSyncQueue = async () => {
@@ -1013,28 +1201,34 @@ const queueBackendSync = (path, body, method = "POST", options = {}) => {
     await updateSyncStatusWidget();
     return syncQueuedSubmission(queueItem, {
       silent: Boolean(options.silent),
-      successMessage: options.successMessage || "Submitted successfully. Synced to server.",
+      successMessage: options.successMessage || "Submitted successfully.",
     });
   })();
 };
 
 window.addEventListener("online", () => {
-  void flushPendingSyncQueue();
-  void syncSharedHouseholdStateFromBackend();
-  void updateSyncStatusWidget();
+  void (async () => {
+    await ensureOfflineStateReady();
+    await flushPendingSyncQueue();
+    await syncSharedHouseholdStateFromBackend();
+    await updateSyncStatusWidget();
+  })();
 });
 
 window.addEventListener("offline", () => {
-  void updateSyncStatusWidget();
+  void ensureOfflineStateReady().then(() => updateSyncStatusWidget());
   setSyncStatusMessage("Offline mode active. Changes will sync later.");
 });
 
 window.setTimeout(() => {
-  ensureSyncStatusWidget();
-  void migrateLegacyPendingSyncQueue();
-  void flushPendingSyncQueue();
-  void syncSharedHouseholdStateFromBackend();
-  void updateSyncStatusWidget();
+  void (async () => {
+    await ensureOfflineStateReady();
+    ensureSyncStatusWidget();
+    await migrateLegacyPendingSyncQueue();
+    await flushPendingSyncQueue();
+    await syncSharedHouseholdStateFromBackend();
+    await updateSyncStatusWidget();
+  })();
 }, 0);
 
 const readSelectedHousehold = () => {
@@ -2126,7 +2320,8 @@ const removeEligibleHousehold = (householdId) => {
   const nextHouseholds = households.filter((household) => household.householdId !== householdId);
 
   if (nextHouseholds.length !== households.length) {
-    localStorage.setItem(eligibleHouseholdsStorageKey, JSON.stringify(nextHouseholds));
+    offlineState.eligibleHouseholds = nextHouseholds;
+    void persistOfflineStateValue("eligibleHouseholds", offlineState.eligibleHouseholds);
   }
 };
 
@@ -2179,12 +2374,16 @@ const getFormTypeFromTargetHref = (targetHref = "") => {
   return "";
 };
 
-const filterEligibleHouseholdsForForm = (households = [], formKey = "") => {
+const filterEligibleHouseholdsForForm = (households = [], formKey = "", useLocalFallback = false) => {
   if (!formKey || formKey === "household") {
+    console.log("Excluded completed households:", []);
     return households;
   }
 
   const submittedForms = readSubmittedForms();
+  const excludedHouseholdIds = getExcludedHouseholdIdsForForm(households, formKey, true);
+  console.log("Excluded completed households:", excludedHouseholdIds);
+
   return households.filter((household) => {
     const backendStageSubmitted = getStageSubmissionFlag(household, formKey);
     const localStageSubmitted = hasSubmittedForm(submittedForms[household?.householdId], formKey);
@@ -2193,17 +2392,12 @@ const filterEligibleHouseholdsForForm = (households = [], formKey = "") => {
 };
 
 const readSeafResponses = () => {
-  try {
-    const storedResponses = localStorage.getItem(seafResponsesStorageKey);
-    const parsedResponses = storedResponses ? JSON.parse(storedResponses) : {};
-    return parsedResponses && typeof parsedResponses === "object" ? parsedResponses : {};
-  } catch (error) {
-    return {};
-  }
+  return offlineState.seafResponses && typeof offlineState.seafResponses === "object" ? offlineState.seafResponses : {};
 };
 
 const writeSeafResponses = (data) => {
-  localStorage.setItem(seafResponsesStorageKey, JSON.stringify(data));
+  offlineState.seafResponses = data && typeof data === "object" ? data : {};
+  void persistOfflineStateValue("seafResponses", offlineState.seafResponses);
 };
 
 const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", syncOptions = {}) => {
@@ -2225,7 +2419,7 @@ const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", sync
     householdPatch,
   }, "POST", {
     formType: formKey,
-    successMessage: "Submitted successfully. Synced to server.",
+    successMessage: "Submitted successfully.",
   });
 
   return syncPromise.then(async (result) => {
@@ -2297,13 +2491,16 @@ const populateSubmittedFormsTable = () => {
     const seafSync = getLatestSubmissionStatusForItem(household.householdId, "seaf")?.syncStatus || syncStatusValues.draft;
     const engineeringSync = getLatestSubmissionStatusForItem(household.householdId, "engineering")?.syncStatus || syncStatusValues.draft;
     const inventorySync = getLatestSubmissionStatusForItem(household.householdId, "inventory")?.syncStatus || syncStatusValues.draft;
+    const seafStatus = getUserFacingFormStatus(status.seaf || seafSync);
+    const engineeringStatus = getUserFacingFormStatus(status.engineering || engineeringSync);
+    const inventoryStatus = getUserFacingFormStatus(status.inventory || inventorySync);
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${household.householdId || "-"}</td>
       <td>${household.headName || "-"}</td>
-      <td><span class="status-pill ${status.seaf === "Submitted" ? "is-submitted" : "is-pending"}">${status.seaf === "Submitted" ? "Submitted" : getSyncStatusBadgeLabel(seafSync)}</span></td>
-      <td><span class="status-pill ${status.engineering === "Submitted" ? "is-submitted" : "is-pending"}">${status.engineering === "Submitted" ? "Submitted" : getSyncStatusBadgeLabel(engineeringSync)}</span></td>
-      <td><span class="status-pill ${status.inventory === "Submitted" ? "is-submitted" : "is-pending"}">${status.inventory === "Submitted" ? "Submitted" : getSyncStatusBadgeLabel(inventorySync)}</span></td>
+      <td><span class="status-pill ${getUserFacingFormStatusTone(status.seaf || seafSync)}">${seafStatus}</span></td>
+      <td><span class="status-pill ${getUserFacingFormStatusTone(status.engineering || engineeringSync)}">${engineeringStatus}</span></td>
+      <td><span class="status-pill ${getUserFacingFormStatusTone(status.inventory || inventorySync)}">${inventoryStatus}</span></td>
     `;
     submittedFormsBody.append(row);
   });
@@ -2418,7 +2615,12 @@ if (householdPickerLinks.length > 0) {
     picker.hidden = false;
 
     const targetFormKey = getFormTypeFromTargetHref(targetHref);
-    const households = filterEligibleHouseholdsForForm(await getEligibleHouseholdsForPicker(), targetFormKey);
+    const eligibilityState = await getEligibleHouseholdsForPicker();
+    const households = filterEligibleHouseholdsForForm(
+      eligibilityState.households,
+      targetFormKey,
+      eligibilityState.source !== "backend"
+    );
     pickerList.innerHTML = "";
 
     if (households.length === 0) {
@@ -2452,6 +2654,10 @@ if (householdPickerLinks.length > 0) {
       await showHouseholdPicker(link.href);
     });
   });
+}
+
+if (["seaf", "engineering", "inventory"].includes(getCurrentFormType())) {
+  void syncSharedHouseholdStateFromBackend();
 }
 
 const selectedHouseholdSummary = document.querySelector("[data-selected-household-summary]");
@@ -3195,7 +3401,7 @@ if (inventoryForm) {
 
       try {
         const redirectMessage = syncResult?.syncStatus === syncStatusValues.synced
-          ? "Submitted successfully. Synced to server."
+          ? "Submitted successfully."
           : syncResult?.syncStatus === syncStatusValues.pending
             ? "Saved offline. This form will sync when internet returns."
             : "Sync failed. Please retry.";
@@ -3204,7 +3410,7 @@ if (inventoryForm) {
         // Ignore sessionStorage errors.
       }
 
-      window.location.href = "/pages/index.html";
+      window.location.href = formsHomeUrl;
     });
   }
 
@@ -3452,7 +3658,7 @@ if (socioeconomicForm) {
 
       try {
         const redirectMessage = syncResult?.syncStatus === syncStatusValues.synced
-          ? "Submitted successfully. Synced to server."
+          ? "Submitted successfully."
           : syncResult?.syncStatus === syncStatusValues.pending
             ? "Saved offline. This form will sync when internet returns."
             : "Sync failed. Please retry.";
@@ -3461,7 +3667,7 @@ if (socioeconomicForm) {
         // Ignore sessionStorage errors.
       }
 
-      window.location.href = "/pages/index.html";
+      window.location.href = formsHomeUrl;
     });
   }
 }
@@ -3477,6 +3683,7 @@ if (engineeringForm) {
   const catchmentRows = Array.from(engineeringForm.querySelectorAll("[data-catchment-row]"));
   const tankSections = Array.from(engineeringForm.querySelectorAll("[data-tank-section]"));
   const tankCountInputs = Array.from(engineeringForm.querySelectorAll("[data-tank-count]"));
+  const tankAvailabilityInputs = Array.from(engineeringForm.querySelectorAll("[data-tank-availability]"));
   const catchmentTotalAreaInput = engineeringForm.querySelector("[data-catchment-total-area]");
   const waterNeedAreaInput = engineeringForm.querySelector("[data-water-need-area]");
   const waterNeedSpaceInput = engineeringForm.querySelector("[data-water-need-space]");
@@ -3711,6 +3918,25 @@ if (engineeringForm) {
     syncTankTotals(tankType);
   };
 
+  const getTankAvailabilityValue = (tankType) => {
+    const selectedInput = engineeringForm.querySelector(`[data-tank-availability='${tankType}']:checked`);
+    return selectedInput?.value || "";
+  };
+
+  const setTankAvailabilityValue = (tankType, value) => {
+    const normalizedValue = String(value || "").trim().toLowerCase();
+    if (!normalizedValue) {
+      return;
+    }
+
+    const targetInput = engineeringForm.querySelector(
+      `[data-tank-availability='${tankType}'][value='${normalizedValue === "yes" ? "Yes" : "No"}']`
+    );
+    if (targetInput) {
+      targetInput.checked = true;
+    }
+  };
+
   const setTankSectionState = (tankType, enabled) => {
     const section = engineeringForm.querySelector(`[data-tank-section='${tankType}']`);
     if (!section) {
@@ -3729,20 +3955,18 @@ if (engineeringForm) {
       }
     });
 
-    createTankRows(tankType, 0);
-    const totalInput = section.querySelector(`[data-tank-total='${tankType}']`);
-    if (totalInput) {
-      totalInput.value = "";
+    if (!enabled) {
+      createTankRows(tankType, 0);
+      const totalInput = section.querySelector(`[data-tank-total='${tankType}']`);
+      if (totalInput) {
+        totalInput.value = "";
+      }
     }
   };
 
-  const syncTankSectionsFromSeaf = () => {
-    const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
-    const responses = readSeafResponses();
-    const facilities = responses[householdId]?.facilities || [];
-
-    setTankSectionState("underground", facilities.includes("Underground tank"));
-    setTankSectionState("overhead", facilities.includes("Overhead tank"));
+  const syncTankSectionsFromEngineeringSelection = () => {
+    setTankSectionState("underground", getTankAvailabilityValue("underground") === "Yes");
+    setTankSectionState("overhead", getTankAvailabilityValue("overhead") === "Yes");
   };
 
   const syncEngineerOptions = () => {
@@ -3817,6 +4041,19 @@ if (engineeringForm) {
       restoreFormState(engineeringForm, source.formState);
     }
 
+    ["underground", "overhead"].forEach((tankType) => {
+      if (!getTankAvailabilityValue(tankType)) {
+        const tankCount = Math.max(
+          0,
+          Number.parseInt(
+            engineeringForm.querySelector(`[data-tank-count='${tankType}']`)?.value || savedTankCounts[tankType] || "0",
+            10
+          ) || 0
+        );
+        setTankAvailabilityValue(tankType, tankCount > 0 ? "Yes" : "No");
+      }
+    });
+
     if (housingAreaInput && !housingAreaInput.value && source.housingArea) {
       housingAreaInput.value = source.housingArea;
     }
@@ -3833,6 +4070,7 @@ if (engineeringForm) {
     toggleCheckboxes.forEach((checkbox) => {
       syncToggleField(checkbox);
     });
+    syncTankSectionsFromEngineeringSelection();
     Array.from(engineeringForm.querySelectorAll("[data-generated-tank-row]")).forEach((row) => {
       const tankType = row.dataset.generatedTankRow;
       syncTankRow(row, tankType);
@@ -3876,6 +4114,12 @@ if (engineeringForm) {
       });
     });
 
+    tankAvailabilityInputs.forEach((input) => {
+      input.addEventListener("change", () => {
+        syncTankSectionsFromEngineeringSelection();
+      });
+    });
+
     if (waterNeedHouseholdSizeInput) {
       waterNeedHouseholdSizeInput.addEventListener("input", syncWaterNeedCalculations);
     }
@@ -3890,7 +4134,12 @@ if (engineeringForm) {
     syncTankRow(row, tankType);
     });
 
-    syncTankSectionsFromSeaf();
+    ["underground", "overhead"].forEach((tankType) => {
+      if (!getTankAvailabilityValue(tankType)) {
+        setTankAvailabilityValue(tankType, "No");
+      }
+    });
+    syncTankSectionsFromEngineeringSelection();
     syncHousingStructureArea();
     syncEngineerOptions();
     syncWaterNeedCalculations();
@@ -3993,7 +4242,7 @@ if (engineeringForm) {
 
       try {
         const redirectMessage = syncResult?.syncStatus === syncStatusValues.synced
-          ? "Submitted successfully. Synced to server."
+          ? "Submitted successfully."
           : syncResult?.syncStatus === syncStatusValues.pending
             ? "Saved offline. This form will sync when internet returns."
             : "Sync failed. Please retry.";
@@ -4002,7 +4251,7 @@ if (engineeringForm) {
         // Ignore sessionStorage errors.
       }
 
-      window.location.href = "/pages/index.html";
+      window.location.href = formsHomeUrl;
     });
   }
 }
@@ -4039,7 +4288,6 @@ if (householdForm) {
   const respondantNameInput = document.querySelector("[data-respondant-name]");
   const respondantAgeInput = document.querySelector("[data-respondant-age]");
 
-  const generatedIdsStorageKey = "shehersaaz-generated-household-ids";
   const interviewAreas = {
     Rawalpindi: ["UC 1", "UC 2", "UC 4", "UC 5", "UC 6", "UC 12", "UC 37"],
     Nowshera: [
@@ -4222,17 +4470,12 @@ if (householdForm) {
   };
 
   const readGeneratedIds = () => {
-    try {
-      const storedIds = localStorage.getItem(generatedIdsStorageKey);
-      const parsedIds = storedIds ? JSON.parse(storedIds) : [];
-      return Array.isArray(parsedIds) ? parsedIds : [];
-    } catch (error) {
-      return [];
-    }
+    return Array.isArray(offlineState.generatedIds) ? offlineState.generatedIds : [];
   };
 
   const writeGeneratedIds = (ids) => {
-    localStorage.setItem(generatedIdsStorageKey, JSON.stringify(ids));
+    offlineState.generatedIds = Array.isArray(ids) ? ids : [];
+    void persistOfflineStateValue("generatedIds", offlineState.generatedIds);
   };
 
   const generateCodeSegment = () => {
@@ -4540,26 +4783,25 @@ if (householdForm) {
       return;
     }
 
-    try {
-      const storedHouseholds = localStorage.getItem(eligibleHouseholdsStorageKey);
-      const parsedHouseholds = storedHouseholds ? JSON.parse(storedHouseholds) : [];
-      const households = Array.isArray(parsedHouseholds) ? parsedHouseholds : [];
-      const record = {
-        householdId: householdIdInput.value,
-        headName
+    const households = readEligibleHouseholds();
+    const record = {
+      householdId: householdIdInput.value,
+      headName,
+    };
+    const existingIndex = households.findIndex((household) => household.householdId === record.householdId);
+    const nextHouseholds = [...households];
+
+    if (existingIndex >= 0) {
+      nextHouseholds[existingIndex] = {
+        ...nextHouseholds[existingIndex],
+        ...record,
       };
-      const existingIndex = households.findIndex((household) => household.householdId === record.householdId);
-
-      if (existingIndex >= 0) {
-        households[existingIndex] = record;
-      } else {
-        households.unshift(record);
-      }
-
-      localStorage.setItem(eligibleHouseholdsStorageKey, JSON.stringify(households));
-    } catch (error) {
-      // Ignore localStorage errors so submission is not blocked.
+    } else {
+      nextHouseholds.unshift(record);
     }
+
+    offlineState.eligibleHouseholds = nextHouseholds;
+    void persistOfflineStateValue("eligibleHouseholds", offlineState.eligibleHouseholds);
   };
 
   const saveHouseholdAssessmentRecord = (eligibilityStatus) => {
@@ -4694,7 +4936,7 @@ if (householdForm) {
             if (syncResult?.syncStatus === syncStatusValues.pending) {
               showFloatingMessage("Saved offline. This form will sync when internet returns.");
             } else if (syncResult?.syncStatus === syncStatusValues.synced) {
-              showFloatingMessage("Submitted successfully. Synced to server.");
+              showFloatingMessage("Submitted successfully.");
             }
           } catch (error) {
             // Keep the local save and allow the user to continue.
@@ -4708,7 +4950,7 @@ if (householdForm) {
           if (syncResult?.syncStatus === syncStatusValues.pending) {
             showFloatingMessage("Saved offline. This form will sync when internet returns.");
           } else if (syncResult?.syncStatus === syncStatusValues.synced) {
-            showFloatingMessage("Submitted successfully. Synced to server.");
+            showFloatingMessage("Submitted successfully.");
           }
         } catch (error) {
           // Keep the local save and continue to show the eligibility result.
@@ -4747,12 +4989,12 @@ if (householdForm) {
         feedback.textContent = syncResult?.syncStatus === syncStatusValues.pending
           ? "Saved offline. This form will sync when internet returns."
           : syncResult?.syncStatus === syncStatusValues.synced
-            ? "Submitted successfully. Synced to server."
+            ? "Submitted successfully."
             : "Sync failed. Please retry.";
         feedback.classList.toggle("form-feedback-success", syncResult?.syncStatus !== syncStatusValues.failed);
         feedback.classList.toggle("form-feedback-error", syncResult?.syncStatus === syncStatusValues.failed);
       }
-      window.location.href = "/pages/index.html";
+      window.location.href = formsHomeUrl;
     });
   }
 }

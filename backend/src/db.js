@@ -1327,6 +1327,8 @@ const submitForm = async ({
         return {
           ...(parseJson(existingSubmission.response_json, {}) || {}),
           localSubmissionId: normalizedLocalSubmissionId,
+          syncStatus: "synced",
+          syncedAt: existingSubmission.synced_at || null,
           idempotentReplay: true,
         };
       }
@@ -1368,6 +1370,9 @@ const submitForm = async ({
       householdId,
       formKey,
       localSubmissionId: normalizedLocalSubmissionId || null,
+      syncStatus: "synced",
+      syncedAt: new Date().toISOString(),
+      idempotentReplay: false,
       status: {
         head_name: nextStatus.selected_household_name || "",
         household_status: nextStatus.household_status || "Pending",

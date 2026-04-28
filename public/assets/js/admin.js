@@ -7,7 +7,7 @@ const submittedFormsStorageKey = "shehersaaz-submitted-forms";
 const seafResponsesStorageKey = "shehersaaz-seaf-responses";
 const householdRecordsStorageKey = "shehersaaz-household-records";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
-const frontendAssetVersion = "v2";
+const frontendAssetVersion = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-04-28-01";
 
 const getConfiguredApiBaseUrl = () => {
   const metaTag = document.querySelector('meta[name="api-base-url"]');
@@ -39,19 +39,7 @@ const getApiBaseUrlCandidates = () => {
 const backendBaseUrls = getApiBaseUrlCandidates();
 const backendBaseUrl = backendBaseUrls[0];
 
-if ("serviceWorker" in navigator && window.location.protocol !== "file:" && !isLocalFrontendDev) {
-  window.addEventListener("load", () => {
-    (async () => {
-      try {
-        await navigator.serviceWorker.register(`/sw.js?v=${frontendAssetVersion}`, {
-          updateViaCache: "none",
-        });
-      } catch (error) {
-        console.warn("Service worker registration failed:", error);
-      }
-    })();
-  });
-}
+window.__SHEHERSAAZ_APP__?.registerServiceWorker?.();
 
 function readJson(storage, key, fallback) {
   try {

@@ -7,8 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../../assets/css/admin.css?v=v2">
-  <script src="../../assets/js/admin.js?v=v2" defer></script>
+  <link rel="stylesheet" href="../../assets/css/admin.css?v=2026-04-28-01">
+  <script src="../../assets/js/app-config.js?v=2026-04-28-01"></script>
+  <script src="../../assets/js/admin.js?v=2026-04-28-01" defer></script>
 </head>
 <body class="admin-auth-shell">
   <main class="admin-auth">
@@ -44,13 +45,12 @@
         </label>
 
         <button type="submit" class="admin-button">Login</button>
+        <div class="admin-secondary-entry">
+          <p class="admin-secondary-entry__label">For Field staff continue to Assessment Form and login for Management</p>
+          <a class="admin-button admin-button--ghost admin-secondary-entry__link" href="../index.html?v=2026-04-28-01">Continue to Assessment Forms</a>
+        </div>
         <p class="admin-feedback" data-admin-feedback aria-live="polite"></p>
       </form>
-
-      <div class="admin-credentials">
-        <p><strong>Backend-configured access</strong></p>
-        <p>Set <code>MANAGEMENT_USERS</code> and <code>MANAGEMENT_PASSWORD</code> in <code>backend/.env</code>.</p>
-      </div>
     </section>
   </main>
 </body>

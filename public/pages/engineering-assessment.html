@@ -7,8 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../assets/css/forms.css?v=v2">
-  <script src="../assets/js/forms.js?v=v2" defer></script>
+  <link rel="stylesheet" href="../assets/css/forms.css?v=2026-04-28-01">
+  <script src="../assets/js/app-config.js?v=2026-04-28-01"></script>
+  <script src="../assets/js/forms.js?v=2026-04-28-01" defer></script>
 </head>
 <body class="site-shell">
   <main class="form-page">
@@ -275,10 +276,33 @@
             </label>
           </div>
 
+          <div class="section-header section-header-compact engineering-block-title">
+            <h3>Question 4. Existing tanks</h3>
+            <p>Select whether the house has an overhead tank or underground tank.</p>
+          </div>
+
+          <div class="assessment-grid tank-availability-grid">
+            <div class="field-group field-span-1">
+              <span>Overhead Tank</span>
+              <div class="checkbox-grid checkbox-grid--stacked tank-availability-options">
+                <label class="checkbox-card"><input type="radio" name="overhead-tank-availability" value="Yes" data-tank-availability="overhead"> Yes</label>
+                <label class="checkbox-card"><input type="radio" name="overhead-tank-availability" value="No" data-tank-availability="overhead"> No</label>
+              </div>
+            </div>
+
+            <div class="field-group field-span-1">
+              <span>Underground Tank</span>
+              <div class="checkbox-grid checkbox-grid--stacked tank-availability-options">
+                <label class="checkbox-card"><input type="radio" name="underground-tank-availability" value="Yes" data-tank-availability="underground"> Yes</label>
+                <label class="checkbox-card"><input type="radio" name="underground-tank-availability" value="No" data-tank-availability="underground"> No</label>
+              </div>
+            </div>
+          </div>
+
           <section class="tank-section" data-tank-section="underground">
             <div class="section-header section-header-compact engineering-block-title">
-              <h3>Question 4. Underground Tank</h3>
-              <p class="tank-section__hint">This question is enabled only if <strong>Underground tank</strong> was selected in SEAF facilities.</p>
+              <h3>Question 4.1 Underground Tank Details</h3>
+              <p class="tank-section__hint">This section opens only when <strong>Underground Tank</strong> is marked <strong>Yes</strong> above.</p>
             </div>
 
             <div class="assessment-grid">
@@ -320,8 +344,8 @@
 
           <section class="tank-section" data-tank-section="overhead">
             <div class="section-header section-header-compact engineering-block-title">
-              <h3>Question 5. Overhead Tank</h3>
-              <p class="tank-section__hint">This question is enabled only if <strong>Overhead tank</strong> was selected in SEAF facilities.</p>
+              <h3>Question 4.2 Overhead Tank Details</h3>
+              <p class="tank-section__hint">This section opens only when <strong>Overhead Tank</strong> is marked <strong>Yes</strong> above.</p>
             </div>
 
             <div class="assessment-grid">
@@ -362,7 +386,7 @@
           </section>
 
           <div class="section-header section-header-compact engineering-block-title">
-            <h3>Question 6. Proposed storage capacity of tanks</h3>
+            <h3>Question 5. Proposed storage capacity of tanks</h3>
             <p>Select the proposed storage capacity for the RWH Unit tanks.</p>
           </div>
 
@@ -379,7 +403,7 @@
           </label>
 
           <div class="section-header section-header-compact engineering-block-title">
-            <h3>Question 7. The house is not appropriate for RWHU</h3>
+            <h3>Question 6. The house is not appropriate for RWHU</h3>
             <p>If such is the case, please briefly enlist the reasons for rejection.</p>
           </div>
 

@@ -1,91 +1,113 @@
-const CACHE_NAME = "shehersaaz-v4";
-const STATIC_CACHE = `${CACHE_NAME}-static`;
-const IMAGE_CACHE = `${CACHE_NAME}-images`;
-const LEGACY_CACHE_PREFIXES = ["app-shell-", "shehersaaz-app-", "shehersaaz-"];
-const ASSET_VERSION = "v4";
-
+const APP_VERSION = "2026-04-28-01";
+const CACHE_NAME = `assessment-forms-v${APP_VERSION}`;
+const LEGACY_CACHE_PREFIXES = ["assessment-forms-v", "app-shell-", "shehersaaz-app-", "shehersaaz-"];
 const PRECACHE_URLS = [
   "/",
-  `/assets/images/Adaptation Fund Logo Final Tr.png?v=${ASSET_VERSION}`,
-  `/assets/images/pakistan_skyline_final.png?v=${ASSET_VERSION}`,
-  `/assets/images/rainwater-harvesting-unit-hero.png?v=${ASSET_VERSION}`,
-  `/assets/images/Shehersaaz Logo Update 2025.png?v=${ASSET_VERSION}`,
-  `/assets/images/UN-Habitat Logo Vector.png?v=${ASSET_VERSION}`,
+  `/index.html?v=${APP_VERSION}`,
+  `/pages/index.html?v=${APP_VERSION}`,
+  `/pages/admin-dashboard/index.html?v=${APP_VERSION}`,
+  `/assets/js/app-config.js?v=${APP_VERSION}`,
+  `/assets/js/forms.js?v=${APP_VERSION}`,
+  `/assets/js/admin.js?v=${APP_VERSION}`,
+  `/assets/css/forms.css?v=${APP_VERSION}`,
+  `/assets/css/admin.css?v=${APP_VERSION}`,
+  `/assets/images/Adaptation Fund Logo Final Tr.png?v=${APP_VERSION}`,
+  `/assets/images/pakistan_skyline_final.png?v=${APP_VERSION}`,
+  `/assets/images/rainwater-harvesting-unit-hero.png?v=${APP_VERSION}`,
+  `/assets/images/Shehersaaz Logo Update 2025.png?v=${APP_VERSION}`,
+  `/assets/images/UN-Habitat Logo Vector.png?v=${APP_VERSION}`,
 ];
 
 const isCacheableResponse = (response) => Boolean(response && response.ok);
 
-const deleteLegacyCaches = async () => {
+const deleteOldCaches = async () => {
   const keys = await caches.keys();
   await Promise.all(
     keys
-      .filter((key) => {
-        if (key === STATIC_CACHE || key === IMAGE_CACHE) {
-          return false;
-        }
-
-        return LEGACY_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix));
-      })
+      .filter((key) => key !== CACHE_NAME && LEGACY_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix)))
       .map((key) => caches.delete(key))
   );
 };
 
+const cacheResponse = async (request, response) => {
+  if (!isCacheableResponse(response)) {
+    return response;
+  }
+
+  const cache = await caches.open(CACHE_NAME);
+  await cache.put(request, response.clone());
+  return response;
+};
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_URLS))
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.addAll(PRECACHE_URLS);
+      await self.skipWaiting();
+    })()
   );
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil((async () => {
-    await deleteLegacyCaches();
-    await self.clients.claim();
-  })());
+  event.waitUntil(
+    (async () => {
+      await deleteOldCaches();
+      await self.clients.claim();
+    })()
+  );
 });
 
-const networkFirst = async (request, cacheName, options = {}) => {
-  const cache = await caches.open(cacheName);
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
+const networkOnlyApi = async (request) => {
+  try {
+    return await fetch(request, { cache: "no-store" });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: "Unable to reach the backend API." }), {
+      status: 503,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
+};
+
+const networkFirstHtml = async (request) => {
+  const cache = await caches.open(CACHE_NAME);
 
   try {
-    const networkResponse = await fetch(request, {
-      cache: options.requestCache || "no-store",
-    });
-
-    if (isCacheableResponse(networkResponse) && options.cacheResponse !== false) {
-      await cache.put(request, networkResponse.clone());
-    }
-
-    return networkResponse;
+    const response = await fetch(request, { cache: "no-store" });
+    await cacheResponse(request, response);
+    return response;
   } catch (error) {
-    const cachedResponse = await cache.match(request, { ignoreSearch: options.ignoreSearch === true });
+    const cachedResponse = await cache.match(request, { ignoreSearch: true });
     if (cachedResponse) {
       return cachedResponse;
     }
 
-    if (options.fallbackUrl) {
-      const fallbackResponse = await cache.match(options.fallbackUrl, { ignoreSearch: true });
-      if (fallbackResponse) {
-        return fallbackResponse;
-      }
+    const fallbackResponse = await cache.match(`/pages/admin-dashboard/index.html?v=${APP_VERSION}`, { ignoreSearch: true });
+    if (fallbackResponse) {
+      return fallbackResponse;
     }
 
     throw error;
   }
 };
 
-const staleWhileRevalidateImage = async (request) => {
-  const cache = await caches.open(IMAGE_CACHE);
-  const cachedResponse = await cache.match(request, { ignoreSearch: true });
+const cacheStaticAsset = async (request) => {
+  const cache = await caches.open(CACHE_NAME);
+  const cachedResponse = await cache.match(request, { ignoreSearch: false });
+  if (cachedResponse) {
+    return cachedResponse;
+  }
 
-  const networkPromise = fetch(request).then(async (response) => {
-    if (isCacheableResponse(response)) {
-      await cache.put(request, response.clone());
-    }
-    return response;
-  });
-
-  return cachedResponse || networkPromise;
+  const response = await fetch(request, { cache: "no-store" });
+  return cacheResponse(request, response);
 };
 
 self.addEventListener("fetch", (event) => {
@@ -94,58 +116,29 @@ self.addEventListener("fetch", (event) => {
   }
 
   const requestUrl = new URL(event.request.url);
-
   if (requestUrl.origin !== self.location.origin) {
     return;
   }
 
-  if (requestUrl.pathname === "/") {
-    event.respondWith(fetch("/pages/index.html", { cache: "no-store" }));
-    return;
-  }
-
   if (requestUrl.pathname.startsWith("/api/")) {
-    event.respondWith(
-      fetch(event.request, { cache: "no-store" }).catch(() => new Response(JSON.stringify({ error: "Unable to reach the backend API." }), {
-        status: 503,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }))
-    );
+    event.respondWith(networkOnlyApi(event.request));
     return;
   }
 
   const isHtmlRequest =
     event.request.mode === "navigate" ||
+    requestUrl.pathname === "/" ||
     requestUrl.pathname.endsWith(".html");
-  const isScriptRequest = requestUrl.pathname.endsWith(".js");
-  const isStyleRequest = requestUrl.pathname.endsWith(".css");
-  const isImageRequest = event.request.destination === "image";
+  const isStaticAsset =
+    ["style", "script", "worker", "font", "image"].includes(event.request.destination) ||
+    /\.(?:css|js|png|jpg|jpeg|svg|webp|gif|woff2?)$/i.test(requestUrl.pathname);
 
   if (isHtmlRequest) {
-    event.respondWith(
-      networkFirst(event.request, STATIC_CACHE, {
-        requestCache: "no-store",
-        cacheResponse: false,
-        fallbackUrl: "/pages/index.html",
-      })
-    );
+    event.respondWith(networkFirstHtml(event.request));
     return;
   }
 
-  if (isScriptRequest || isStyleRequest) {
-    event.respondWith(
-      networkFirst(event.request, STATIC_CACHE, {
-        requestCache: "no-store",
-        ignoreSearch: false,
-      })
-    );
-    return;
-  }
-
-  if (isImageRequest) {
-    event.respondWith(staleWhileRevalidateImage(event.request));
-    return;
+  if (isStaticAsset) {
+    event.respondWith(cacheStaticAsset(event.request));
   }
 });
