@@ -17,6 +17,7 @@ const pendingSyncQueueStorageKey = "shehersaaz-pending-sync-queue";
 const localSubmissionStatusesStorageKey = "shehersaaz-local-submission-statuses";
 const lastSuccessfulSyncStorageKey = "shehersaaz-last-successful-sync-at";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
+const frontendAssetVersion = "v2";
 
 const getConfiguredApiBaseUrl = () => {
   const metaTag = document.querySelector('meta[name="api-base-url"]');
@@ -56,9 +57,29 @@ const backendBaseUrl = backendBaseUrls[0];
 
 if ("serviceWorker" in navigator && window.location.protocol !== "file:" && !isLocalFrontendDev) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch((error) => {
-      console.warn("Service worker registration failed:", error);
-    });
+    (async () => {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(
+          registrations
+            .filter((registration) => {
+              try {
+                const scriptUrl = registration.active?.scriptURL || registration.waiting?.scriptURL || registration.installing?.scriptURL || "";
+                return scriptUrl && !scriptUrl.endsWith(`/sw.js?v=${frontendAssetVersion}`) && !scriptUrl.endsWith("/sw.js");
+              } catch (error) {
+                return false;
+              }
+            })
+            .map((registration) => registration.unregister())
+        );
+
+        await navigator.serviceWorker.register(`/sw.js?v=${frontendAssetVersion}`, {
+          updateViaCache: "none",
+        });
+      } catch (error) {
+        console.warn("Service worker registration failed:", error);
+      }
+    })();
   });
 }
 
@@ -578,6 +599,10 @@ const ensureSyncStatusWidget = () => {
   }
 
   const homeGrid = document.querySelector(".home-page .form-grid");
+  if (!homeGrid) {
+    return null;
+  }
+
   const submittedFormsTile = document.querySelector("[data-open-submitted-forms]");
   const widget = document.createElement("aside");
   widget.className = "sync-status-widget";
@@ -599,15 +624,11 @@ const ensureSyncStatusWidget = () => {
     <button class="sync-status-widget__button" type="button" data-sync-now-button>Sync now</button>
   `;
 
-  if (homeGrid) {
-    widget.classList.add("sync-status-widget--embedded");
-    if (submittedFormsTile?.parentElement === homeGrid) {
-      submittedFormsTile.insertAdjacentElement("afterend", widget);
-    } else {
-      homeGrid.append(widget);
-    }
+  widget.classList.add("sync-status-widget--embedded");
+  if (submittedFormsTile?.parentElement === homeGrid) {
+    submittedFormsTile.insertAdjacentElement("afterend", widget);
   } else {
-    document.body.append(widget);
+    homeGrid.append(widget);
   }
 
   const syncNowButton = widget.querySelector("[data-sync-now-button]");
@@ -3059,7 +3080,7 @@ if (inventoryForm) {
         // Ignore sessionStorage errors.
       }
 
-      window.location.href = "index.html";
+      window.location.href = "/pages/index.html";
     });
   }
 
@@ -3316,7 +3337,7 @@ if (socioeconomicForm) {
         // Ignore sessionStorage errors.
       }
 
-      window.location.href = "index.html";
+      window.location.href = "/pages/index.html";
     });
   }
 }
@@ -3857,7 +3878,7 @@ if (engineeringForm) {
         // Ignore sessionStorage errors.
       }
 
-      window.location.href = "index.html";
+      window.location.href = "/pages/index.html";
     });
   }
 }
@@ -4607,7 +4628,7 @@ if (householdForm) {
         feedback.classList.toggle("form-feedback-success", syncResult?.syncStatus !== syncStatusValues.failed);
         feedback.classList.toggle("form-feedback-error", syncResult?.syncStatus === syncStatusValues.failed);
       }
-      window.location.href = "index.html";
+      window.location.href = "/pages/index.html";
     });
   }
 }
