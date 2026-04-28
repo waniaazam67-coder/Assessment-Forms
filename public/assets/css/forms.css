@@ -187,6 +187,154 @@ select {
   transform: translateY(-1px);
 }
 
+.sync-status-widget {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  display: grid;
+  gap: 10px;
+  min-width: 240px;
+  max-width: min(320px, calc(100vw - 36px));
+  padding: 14px 16px;
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 18px 40px rgba(141, 168, 189, 0.18);
+  backdrop-filter: blur(10px);
+}
+
+.sync-status-widget--embedded {
+  position: static;
+  right: auto;
+  bottom: auto;
+  z-index: auto;
+  min-width: 0;
+  max-width: none;
+  width: 100%;
+  min-height: 250px;
+  padding: 26px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 250, 252, 0.96));
+  backdrop-filter: none;
+}
+
+.sync-status-widget--embedded .sync-status-widget__message {
+  margin-top: 4px;
+  font-size: 1rem;
+}
+
+.sync-status-widget--embedded .sync-status-widget__button {
+  margin-top: auto;
+  min-height: 56px;
+  font-size: 1rem;
+}
+
+.sync-status-widget__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sync-status-widget__label,
+.sync-status-widget__meta-label {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sync-status-widget__badge,
+.sync-status-widget__count {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sync-status-widget__badge {
+  color: var(--success-deep);
+}
+
+.sync-status-widget__badge.is-offline {
+  color: #cf5a5a;
+}
+
+.sync-status-widget__count {
+  color: var(--text-soft);
+}
+
+.sync-status-widget__state {
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: #eef3f7;
+  color: var(--text-main);
+}
+
+.sync-status-widget__state.is-draft {
+  background: #eef3f7;
+  color: #526472;
+}
+
+.sync-status-widget__state.is-pending {
+  background: #fff1d9;
+  color: #9a6200;
+}
+
+.sync-status-widget__state.is-syncing {
+  background: #dff2ff;
+  color: #1364a3;
+}
+
+.sync-status-widget__state.is-synced {
+  background: rgba(88, 194, 125, 0.16);
+  color: var(--success-deep);
+}
+
+.sync-status-widget__state.is-failed {
+  background: #ffe2e2;
+  color: #b23a3a;
+}
+
+.sync-status-widget__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-main);
+  font-size: 0.84rem;
+}
+
+.sync-status-widget__message {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.sync-status-widget__button {
+  min-height: 42px;
+  border: 1px solid rgba(88, 194, 125, 0.3);
+  border-radius: 999px;
+  background: rgba(88, 194, 125, 0.12);
+  color: var(--success-deep);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.sync-status-widget__button:hover,
+.sync-status-widget__button:focus-visible {
+  background: rgba(88, 194, 125, 0.18);
+  border-color: rgba(88, 194, 125, 0.5);
+}
+
 .manual-dialog {
   width: min(640px, calc(100% - 24px));
   padding: 0;

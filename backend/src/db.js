@@ -15,6 +15,7 @@ const tableNames = {
   engineering: "engineering",
   inventory: "inventory",
   status: "assessment_status",
+  syncSubmissions: "sync_submissions",
 };
 
 const tablesWithRawPayload = new Set();
@@ -398,6 +399,21 @@ const createSchemaStatements = [
     socio_status VARCHAR(40) NOT NULL DEFAULT 'Pending',
     engineering_status VARCHAR(40) NOT NULL DEFAULT 'Pending',
     inventory_status VARCHAR(40) NOT NULL DEFAULT 'Pending',
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  `CREATE TABLE IF NOT EXISTS sync_submissions (
+    local_submission_id VARCHAR(96) NOT NULL PRIMARY KEY,
+    household_id VARCHAR(64) NOT NULL,
+    form_type VARCHAR(64) NOT NULL,
+    endpoint_path VARCHAR(255) NOT NULL,
+    http_method VARCHAR(16) NOT NULL DEFAULT 'POST',
+    payload_json LONGTEXT NULL,
+    response_json LONGTEXT NULL,
+    sync_status VARCHAR(24) NOT NULL DEFAULT 'pending',
+    last_error LONGTEXT NULL,
+    retry_count INT NOT NULL DEFAULT 0,
+    synced_at TIMESTAMP(3) NULL DEFAULT NULL,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
@@ -812,6 +828,70 @@ const upsertStatusRow = async (connection, householdId, patch = {}) => {
   return next;
 };
 
+const getStoredSyncSubmission = async (connection, localSubmissionId) => {
+  if (!localSubmissionId) {
+    return null;
+  }
+
+  const [rows] = await connection.query(
+    `SELECT *
+     FROM ${escapeSqlIdentifier(tableNames.syncSubmissions)}
+     WHERE local_submission_id = ?
+     LIMIT 1`,
+    [localSubmissionId]
+  );
+
+  return rows[0] || null;
+};
+
+const markSyncSubmissionState = async (connection, submission = {}) => {
+  if (!submission.localSubmissionId) {
+    return null;
+  }
+
+  await connection.query(
+    `INSERT INTO ${escapeSqlIdentifier(tableNames.syncSubmissions)} (
+      local_submission_id,
+      household_id,
+      form_type,
+      endpoint_path,
+      http_method,
+      payload_json,
+      response_json,
+      sync_status,
+      last_error,
+      retry_count,
+      synced_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      household_id = VALUES(household_id),
+      form_type = VALUES(form_type),
+      endpoint_path = VALUES(endpoint_path),
+      http_method = VALUES(http_method),
+      payload_json = VALUES(payload_json),
+      response_json = VALUES(response_json),
+      sync_status = VALUES(sync_status),
+      last_error = VALUES(last_error),
+      retry_count = VALUES(retry_count),
+      synced_at = VALUES(synced_at)`,
+    [
+      submission.localSubmissionId,
+      submission.householdId || "",
+      submission.formType || "",
+      submission.endpointPath || "",
+      submission.httpMethod || "POST",
+      submission.payloadJson || null,
+      submission.responseJson || null,
+      submission.syncStatus || "pending",
+      submission.lastError || null,
+      Number.isFinite(Number(submission.retryCount)) ? Number(submission.retryCount) : 0,
+      submission.syncedAt || null,
+    ]
+  );
+
+  return getStoredSyncSubmission(connection, submission.localSubmissionId);
+};
+
 const getPayloadForForm = (formKey, payload = {}, householdPatch = {}) => {
   if (formKey === "household") {
     return {
@@ -1223,11 +1303,54 @@ const upsertHousehold = async (householdId, payload = {}) =>
     return getHouseholdById(householdId);
   });
 
-const submitForm = async ({ householdId, formKey, status = "Submitted", headName = "", payload = {}, householdPatch = {} }) =>
+const submitForm = async ({
+  householdId,
+  formKey,
+  status = "Submitted",
+  headName = "",
+  payload = {},
+  householdPatch = {},
+  localSubmissionId = "",
+  endpointPath = "",
+  httpMethod = "POST",
+}) =>
   runTransaction(async (connection) => {
     const tableName = getTableName(formKey);
     if (!tableName) {
       throw new Error("Unsupported form key.");
+    }
+
+    const normalizedLocalSubmissionId = String(localSubmissionId || "").trim();
+    if (normalizedLocalSubmissionId) {
+      const existingSubmission = await getStoredSyncSubmission(connection, normalizedLocalSubmissionId);
+      if (existingSubmission?.sync_status === "synced" && existingSubmission.response_json) {
+        return {
+          ...(parseJson(existingSubmission.response_json, {}) || {}),
+          localSubmissionId: normalizedLocalSubmissionId,
+          idempotentReplay: true,
+        };
+      }
+
+      await markSyncSubmissionState(connection, {
+        localSubmissionId: normalizedLocalSubmissionId,
+        householdId,
+        formType: formKey,
+        endpointPath: endpointPath || `/api/forms/${formKey}/submit`,
+        httpMethod,
+        payloadJson: stringifyJson({
+          householdId,
+          formKey,
+          status,
+          headName,
+          payload,
+          householdPatch,
+        }),
+        responseJson: existingSubmission?.response_json || null,
+        syncStatus: "syncing",
+        lastError: null,
+        retryCount: Number(existingSubmission?.retry_count || 0) + 1,
+        syncedAt: existingSubmission?.synced_at || null,
+      });
     }
 
     const mergedPayload = getPayloadForForm(formKey, payload, householdPatch);
@@ -1240,10 +1363,11 @@ const submitForm = async ({ householdId, formKey, status = "Submitted", headName
       getStatusPatchForForm(formKey, status, mergedPayload, householdPatch, headName)
     );
 
-    return {
+    const result = {
       ok: true,
       householdId,
       formKey,
+      localSubmissionId: normalizedLocalSubmissionId || null,
       status: {
         head_name: nextStatus.selected_household_name || "",
         household_status: nextStatus.household_status || "Pending",
@@ -1252,6 +1376,31 @@ const submitForm = async ({ householdId, formKey, status = "Submitted", headName
         inventory_status: nextStatus.inventory_status || "Pending",
       },
     };
+
+    if (normalizedLocalSubmissionId) {
+      await markSyncSubmissionState(connection, {
+        localSubmissionId: normalizedLocalSubmissionId,
+        householdId,
+        formType: formKey,
+        endpointPath: endpointPath || `/api/forms/${formKey}/submit`,
+        httpMethod,
+        payloadJson: stringifyJson({
+          householdId,
+          formKey,
+          status,
+          headName,
+          payload,
+          householdPatch,
+        }),
+        responseJson: stringifyJson(result),
+        syncStatus: "synced",
+        lastError: null,
+        retryCount: 0,
+        syncedAt: new Date(),
+      });
+    }
+
+    return result;
   });
 
 const healthCheck = async () => {

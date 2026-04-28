@@ -1041,7 +1041,7 @@ async function bootDashboardPage() {
     usingBackend = false;
 
     try {
-      const nextSnapshot = await apiJsonRequest("/api/db");
+      const nextSnapshot = await apiJsonRequest(`/api/db?t=${Date.now()}`);
       snapshot = nextSnapshot;
       records = buildRecordsFromSnapshot(nextSnapshot);
       usingBackend = true;

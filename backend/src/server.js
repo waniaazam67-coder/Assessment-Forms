@@ -298,6 +298,9 @@ const handleApi = async (req, res, pathname) => {
       headName: body.headName || "",
       payload: body.payload && typeof body.payload === "object" ? body.payload : {},
       householdPatch: body.householdPatch && typeof body.householdPatch === "object" ? body.householdPatch : {},
+      localSubmissionId: body.localSubmissionId || "",
+      endpointPath: pathname,
+      httpMethod: req.method || "POST",
     });
 
     sendJson(res, 200, result);

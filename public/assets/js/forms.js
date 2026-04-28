@@ -14,6 +14,8 @@ const postRedirectMessageKey = "shehersaaz-post-redirect-message";
 const seafResponsesStorageKey = "shehersaaz-seaf-responses";
 const householdRecordsStorageKey = "shehersaaz-household-records";
 const pendingSyncQueueStorageKey = "shehersaaz-pending-sync-queue";
+const localSubmissionStatusesStorageKey = "shehersaaz-local-submission-statuses";
+const lastSuccessfulSyncStorageKey = "shehersaaz-last-successful-sync-at";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
 
 const getConfiguredApiBaseUrl = () => {
@@ -107,6 +109,91 @@ const writeSubmittedForms = (data) => {
   localStorage.setItem(submittedFormsStorageKey, JSON.stringify(data));
 };
 
+const readLocalSubmissionStatuses = () => {
+  try {
+    const storedStatuses = localStorage.getItem(localSubmissionStatusesStorageKey);
+    const parsedStatuses = storedStatuses ? JSON.parse(storedStatuses) : {};
+    return parsedStatuses && typeof parsedStatuses === "object" ? parsedStatuses : {};
+  } catch (error) {
+    return {};
+  }
+};
+
+const writeLocalSubmissionStatuses = (data) => {
+  localStorage.setItem(localSubmissionStatusesStorageKey, JSON.stringify(data));
+};
+
+const saveLocalSubmissionStatus = (submission = {}) => {
+  const localSubmissionId = String(submission.localSubmissionId || "").trim();
+  if (!localSubmissionId) {
+    return null;
+  }
+
+  const statuses = readLocalSubmissionStatuses();
+  statuses[localSubmissionId] = {
+    localSubmissionId,
+    householdId: submission.householdId || "",
+    formType: submission.formType || "unknown",
+    syncStatus: submission.syncStatus || syncStatusValues.pending,
+    createdAt: submission.createdAt || new Date().toISOString(),
+    syncedAt: submission.syncedAt || null,
+    lastError: submission.lastError || null,
+  };
+  writeLocalSubmissionStatuses(statuses);
+  return statuses[localSubmissionId];
+};
+
+const getLatestSubmissionStatusForItem = (householdId, formType) => {
+  const entries = Object.values(readLocalSubmissionStatuses()).filter((entry) =>
+    entry &&
+    entry.householdId === householdId &&
+    entry.formType === formType
+  );
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return entries.sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))[0];
+};
+
+const setLastSuccessfulSyncTime = (value = new Date().toISOString()) => {
+  localStorage.setItem(lastSuccessfulSyncStorageKey, value);
+};
+
+const getLastSuccessfulSyncTime = () => localStorage.getItem(lastSuccessfulSyncStorageKey) || "";
+
+const normalizeSubmissionStatusValue = (value) => (value === "Submitted" ? "Submitted" : "Pending");
+
+const mergeSubmittedFormsRecords = (...sources) => {
+  const merged = {};
+
+  sources.forEach((source) => {
+    if (!source || typeof source !== "object") {
+      return;
+    }
+
+    Object.entries(source).forEach(([householdId, record]) => {
+      if (!householdId || !record || typeof record !== "object") {
+        return;
+      }
+
+      const existing = merged[householdId] || {};
+      merged[householdId] = {
+        ...existing,
+        ...record,
+        headName: record.headName || existing.headName || "",
+        household: normalizeSubmissionStatusValue(record.household || existing.household),
+        seaf: normalizeSubmissionStatusValue(record.seaf || existing.seaf),
+        engineering: normalizeSubmissionStatusValue(record.engineering || existing.engineering),
+        inventory: normalizeSubmissionStatusValue(record.inventory || existing.inventory),
+      };
+    });
+  });
+
+  return merged;
+};
+
 const readHouseholdRecords = () => {
   try {
     const storedRecords = localStorage.getItem(householdRecordsStorageKey);
@@ -121,6 +208,17 @@ const writeHouseholdRecords = (records) => {
   localStorage.setItem(householdRecordsStorageKey, JSON.stringify(records));
 };
 
+const syncQueueDbName = "shehersaaz-sync-queue";
+const syncQueueStoreName = "submissions";
+const syncQueueDbVersion = 1;
+const syncStatusValues = {
+  draft: "draft",
+  pending: "pending",
+  syncing: "syncing",
+  synced: "synced",
+  failed: "failed",
+};
+
 const readPendingSyncQueue = () => {
   try {
     const storedQueue = localStorage.getItem(pendingSyncQueueStorageKey);
@@ -133,35 +231,6 @@ const readPendingSyncQueue = () => {
 
 const writePendingSyncQueue = (queue) => {
   localStorage.setItem(pendingSyncQueueStorageKey, JSON.stringify(queue));
-};
-
-const findPendingSyncIndex = (queue, entry) =>
-  queue.findIndex((queuedEntry) => {
-    if (!queuedEntry || queuedEntry.path !== entry.path || (queuedEntry.method || "POST") !== (entry.method || "POST")) {
-      return false;
-    }
-
-    return JSON.stringify(queuedEntry.body || {}) === JSON.stringify(entry.body || {});
-  });
-
-const enqueuePendingSync = (entry) => {
-  const queue = readPendingSyncQueue();
-  const normalizedEntry = {
-    ...entry,
-    createdAt: entry.createdAt || new Date().toISOString(),
-  };
-  const existingIndex = findPendingSyncIndex(queue, normalizedEntry);
-
-  if (existingIndex >= 0) {
-    queue[existingIndex] = {
-      ...queue[existingIndex],
-      ...normalizedEntry,
-    };
-  } else {
-    queue.push(normalizedEntry);
-  }
-
-  writePendingSyncQueue(queue);
 };
 
 const apiJsonRequest = async (path, options = {}) => {
@@ -181,7 +250,20 @@ const apiJsonRequest = async (path, options = {}) => {
       });
 
       if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
+        let message = `Request failed with status ${response.status}`;
+
+        try {
+          const payload = await response.json();
+          if (payload?.error) {
+            message = payload.error;
+          }
+        } catch (error) {
+          // Keep the default response message when the error payload is not JSON.
+        }
+
+        const requestError = new Error(message);
+        requestError.status = response.status;
+        throw requestError;
       }
 
       const text = await response.text();
@@ -192,6 +274,556 @@ const apiJsonRequest = async (path, options = {}) => {
   }
 
   throw lastError || new Error("Unable to reach the backend API.");
+};
+
+const buildFreshApiPath = (path) => {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}t=${Date.now()}`;
+};
+
+const createLocalSubmissionId = () => {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  return `local-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+};
+
+let syncQueueDbPromise = null;
+let syncStatusWidget = null;
+let syncStatusMessageTimeoutId = null;
+
+const openSyncQueueDatabase = () => {
+  if (!("indexedDB" in window)) {
+    return Promise.resolve(null);
+  }
+
+  if (!syncQueueDbPromise) {
+    syncQueueDbPromise = new Promise((resolve, reject) => {
+      const request = window.indexedDB.open(syncQueueDbName, syncQueueDbVersion);
+
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(syncQueueStoreName)) {
+          const store = db.createObjectStore(syncQueueStoreName, { keyPath: "localSubmissionId" });
+          store.createIndex("syncStatus", "syncStatus", { unique: false });
+          store.createIndex("updatedAt", "updatedAt", { unique: false });
+        }
+      };
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    }).catch(() => null);
+  }
+
+  return syncQueueDbPromise;
+};
+
+const getStructuredQueueFromLocalStorage = () => {
+  const queue = readPendingSyncQueue();
+  return queue.filter((entry) => entry && typeof entry === "object" && entry.localSubmissionId);
+};
+
+const setStructuredQueueInLocalStorage = (queue) => {
+  writePendingSyncQueue(Array.isArray(queue) ? queue : []);
+};
+
+const withSyncQueueStore = async (mode, handler) => {
+  const db = await openSyncQueueDatabase();
+  if (!db) {
+    return handler(null);
+  }
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(syncQueueStoreName, mode);
+    const store = transaction.objectStore(syncQueueStoreName);
+    let result;
+
+    transaction.oncomplete = () => resolve(result);
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error || new Error("Sync queue transaction aborted."));
+
+    Promise.resolve(handler(store, transaction))
+      .then((value) => {
+        result = value;
+      })
+      .catch((error) => reject(error));
+  });
+};
+
+const getAllSyncQueueItems = async () => {
+  const db = await openSyncQueueDatabase();
+  if (!db) {
+    return getStructuredQueueFromLocalStorage();
+  }
+
+  return withSyncQueueStore("readonly", (store) =>
+    new Promise((resolve, reject) => {
+      const request = store.getAll();
+      request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+      request.onerror = () => reject(request.error);
+    })
+  );
+};
+
+const getSyncQueueItem = async (localSubmissionId) => {
+  if (!localSubmissionId) {
+    return null;
+  }
+
+  const db = await openSyncQueueDatabase();
+  if (!db) {
+    return getStructuredQueueFromLocalStorage().find((entry) => entry.localSubmissionId === localSubmissionId) || null;
+  }
+
+  return withSyncQueueStore("readonly", (store) =>
+    new Promise((resolve, reject) => {
+      const request = store.get(localSubmissionId);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    })
+  );
+};
+
+const putSyncQueueItem = async (item) => {
+  const normalizedItem = {
+    ...item,
+    localSubmissionId: item.localSubmissionId || createLocalSubmissionId(),
+    createdAt: item.createdAt || new Date().toISOString(),
+    updatedAt: item.updatedAt || new Date().toISOString(),
+    syncStatus: item.syncStatus || syncStatusValues.pending,
+    retryCount: Number(item.retryCount || 0),
+    syncedAt: item.syncedAt || null,
+    lastError: item.lastError || null,
+  };
+
+  const db = await openSyncQueueDatabase();
+  if (!db) {
+    const queue = getStructuredQueueFromLocalStorage();
+    const existingIndex = queue.findIndex((entry) => entry.localSubmissionId === normalizedItem.localSubmissionId);
+    if (existingIndex >= 0) {
+      queue[existingIndex] = normalizedItem;
+    } else {
+      queue.push(normalizedItem);
+    }
+    setStructuredQueueInLocalStorage(queue);
+    return normalizedItem;
+  }
+
+  await withSyncQueueStore("readwrite", (store) =>
+    new Promise((resolve, reject) => {
+      const request = store.put(normalizedItem);
+      request.onsuccess = () => resolve(normalizedItem);
+      request.onerror = () => reject(request.error);
+    })
+  );
+
+  return normalizedItem;
+};
+
+const getPendingSyncQueueCount = async () => {
+  const queue = await getAllSyncQueueItems();
+  return queue.filter((item) => [syncStatusValues.pending, syncStatusValues.syncing, syncStatusValues.failed].includes(item.syncStatus)).length;
+};
+
+const getSyncStatusBadgeLabel = (status) => {
+  switch (status) {
+    case syncStatusValues.pending:
+      return "Pending sync";
+    case syncStatusValues.syncing:
+      return "Syncing";
+    case syncStatusValues.synced:
+      return "Synced";
+    case syncStatusValues.failed:
+      return "Sync failed";
+    default:
+      return "Draft";
+  }
+};
+
+const getCurrentFormType = () => {
+  const pathname = window.location.pathname.toLowerCase();
+  if (pathname.endsWith("/socioeconomic-assessment.html")) {
+    return "seaf";
+  }
+  if (pathname.endsWith("/engineering-assessment.html")) {
+    return "engineering";
+  }
+  if (pathname.endsWith("/inventory.html")) {
+    return "inventory";
+  }
+  if (pathname.endsWith("/household-information.html")) {
+    return "household";
+  }
+  return "";
+};
+
+const getCurrentFormSyncState = () => {
+  const formType = getCurrentFormType();
+  if (!formType) {
+    return null;
+  }
+
+  const selectedHousehold = readSelectedHousehold() || {};
+  const householdId = selectedHouseholdIdInput?.value?.trim?.() || selectedHousehold.householdId || "";
+  if (!householdId) {
+    return {
+      syncStatus: syncStatusValues.draft,
+      badgeLabel: getSyncStatusBadgeLabel(syncStatusValues.draft),
+    };
+  }
+
+  const localStatus = getLatestSubmissionStatusForItem(householdId, formType);
+  const syncStatus = localStatus?.syncStatus || syncStatusValues.draft;
+  return {
+    ...localStatus,
+    syncStatus,
+    badgeLabel: getSyncStatusBadgeLabel(syncStatus),
+  };
+};
+
+const confirmSubmittedFormStatus = (householdId, formKey, status = "Submitted", syncOptions = {}) => {
+  if (!householdId) {
+    return;
+  }
+
+  const submittedForms = readSubmittedForms();
+  const existing = submittedForms[householdId] || {};
+  const currentHeadName = selectedHouseholdNameInput ? selectedHouseholdNameInput.value.trim() : "";
+
+  submittedForms[householdId] = {
+    headName: existing.headName || currentHeadName,
+    seaf: existing.seaf || "Pending",
+    engineering: existing.engineering || "Pending",
+    inventory: existing.inventory || "Pending",
+    ...existing,
+    [formKey]: status,
+    updatedAt: new Date().toISOString(),
+  };
+
+  writeSubmittedForms(submittedForms);
+
+  const householdPatch = syncOptions.householdPatch && typeof syncOptions.householdPatch === "object"
+    ? syncOptions.householdPatch
+    : {};
+
+  upsertHouseholdRecord(householdId, {
+    ...householdPatch,
+    headName: currentHeadName || existing.headName || "",
+    stageStatus: {
+      seaf: submittedForms[householdId].seaf,
+      engineering: submittedForms[householdId].engineering,
+      inventory: submittedForms[householdId].inventory,
+    },
+  });
+
+  const selectedHousehold = readSelectedHousehold();
+  if (selectedHousehold?.householdId === householdId) {
+    mergeSelectedHousehold({
+      ...householdPatch,
+      householdId,
+      headName: currentHeadName || existing.headName || selectedHousehold.headName || "",
+    });
+  }
+
+  if (isHouseholdFullySubmitted(submittedForms[householdId])) {
+    removeEligibleHousehold(householdId);
+  }
+};
+
+const confirmSyncedQueueItem = async (queueItem) => {
+  if (!queueItem?.householdId || !queueItem?.formType) {
+    return;
+  }
+
+  if (["seaf", "engineering", "inventory"].includes(queueItem.formType)) {
+    confirmSubmittedFormStatus(queueItem.householdId, queueItem.formType, "Submitted", {
+      householdPatch: queueItem.payload?.householdPatch || {},
+    });
+  }
+
+  if (queueItem.formType === "household") {
+    const latestRecords = readHouseholdRecords();
+    const existingRecord = latestRecords.find((record) => record?.householdId === queueItem.householdId) || {};
+    upsertHouseholdRecord(queueItem.householdId, {
+      ...existingRecord,
+      ...(queueItem.payload?.householdPatch || {}),
+    });
+  }
+};
+
+const inferFormTypeFromSyncPath = (path, payload = {}) => {
+  if (payload?.formType) {
+    return String(payload.formType);
+  }
+
+  const normalizedPath = String(path || "");
+  const formMatch = normalizedPath.match(/\/api\/forms\/([^/]+)\/submit/i);
+  if (formMatch?.[1]) {
+    return formMatch[1].toLowerCase();
+  }
+
+  if (normalizedPath.startsWith("/api/households")) {
+    return "household";
+  }
+
+  return "unknown";
+};
+
+const shouldRetrySyncError = (error) => !error?.status || Number(error.status) >= 500;
+
+const ensureSyncStatusWidget = () => {
+  if (syncStatusWidget || !document.body) {
+    return syncStatusWidget;
+  }
+
+  const homeGrid = document.querySelector(".home-page .form-grid");
+  const submittedFormsTile = document.querySelector("[data-open-submitted-forms]");
+  const widget = document.createElement("aside");
+  widget.className = "sync-status-widget";
+  widget.dataset.syncStatusWidget = "true";
+  widget.innerHTML = `
+    <div class="sync-status-widget__row">
+      <span class="sync-status-widget__badge" data-sync-network-status>Online</span>
+      <span class="sync-status-widget__count" data-sync-pending-count>0 pending</span>
+    </div>
+    <div class="sync-status-widget__row">
+      <span class="sync-status-widget__label">Form status</span>
+      <span class="sync-status-widget__state is-draft" data-sync-form-status>Draft</span>
+    </div>
+    <div class="sync-status-widget__meta">
+      <span class="sync-status-widget__meta-label">Last sync</span>
+      <span data-sync-last-time>Never</span>
+    </div>
+    <p class="sync-status-widget__message" data-sync-status-message>Backend sync ready.</p>
+    <button class="sync-status-widget__button" type="button" data-sync-now-button>Sync now</button>
+  `;
+
+  if (homeGrid) {
+    widget.classList.add("sync-status-widget--embedded");
+    if (submittedFormsTile?.parentElement === homeGrid) {
+      submittedFormsTile.insertAdjacentElement("afterend", widget);
+    } else {
+      homeGrid.append(widget);
+    }
+  } else {
+    document.body.append(widget);
+  }
+
+  const syncNowButton = widget.querySelector("[data-sync-now-button]");
+  syncNowButton?.addEventListener("click", () => {
+    void retryPendingSyncSubmissions({ manual: true });
+  });
+
+  syncStatusWidget = widget;
+  return widget;
+};
+
+const setSyncStatusMessage = (message) => {
+  const widget = ensureSyncStatusWidget();
+  const messageElement = widget?.querySelector("[data-sync-status-message]");
+  if (!messageElement) {
+    return;
+  }
+
+  messageElement.textContent = message;
+
+  if (syncStatusMessageTimeoutId) {
+    window.clearTimeout(syncStatusMessageTimeoutId);
+  }
+
+  syncStatusMessageTimeoutId = window.setTimeout(() => {
+    const fallbackMessage = navigator.onLine ? "Backend sync ready." : "Offline mode active. Changes will sync later.";
+    messageElement.textContent = fallbackMessage;
+  }, 3200);
+};
+
+const updateSyncStatusWidget = async () => {
+  const widget = ensureSyncStatusWidget();
+  if (!widget) {
+    return;
+  }
+
+  const networkBadge = widget.querySelector("[data-sync-network-status]");
+  const pendingCount = widget.querySelector("[data-sync-pending-count]");
+  const formStatus = widget.querySelector("[data-sync-form-status]");
+  const lastSyncTime = widget.querySelector("[data-sync-last-time]");
+
+  if (networkBadge) {
+    const isOnline = navigator.onLine;
+    networkBadge.textContent = isOnline ? "Online" : "Offline";
+    networkBadge.classList.toggle("is-offline", !isOnline);
+  }
+
+  if (pendingCount) {
+    const count = await getPendingSyncQueueCount();
+    pendingCount.textContent = `${count} pending`;
+  }
+
+  if (formStatus) {
+    const currentState = getCurrentFormSyncState();
+    const syncStatus = currentState?.syncStatus || syncStatusValues.draft;
+    formStatus.textContent = currentState?.badgeLabel || "Draft";
+    formStatus.className = `sync-status-widget__state is-${syncStatus}`;
+  }
+
+  if (lastSyncTime) {
+    const value = getLastSuccessfulSyncTime();
+    lastSyncTime.textContent = value ? new Intl.DateTimeFormat("en-GB", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value)) : "Never";
+  }
+};
+
+const migrateLegacyPendingSyncQueue = async () => {
+  const legacyQueue = readPendingSyncQueue().filter((entry) => entry && !entry.localSubmissionId);
+  if (legacyQueue.length === 0) {
+    return;
+  }
+
+  for (const entry of legacyQueue) {
+    await putSyncQueueItem({
+      localSubmissionId: createLocalSubmissionId(),
+      householdId: entry.body?.householdId || "",
+      formType: inferFormTypeFromSyncPath(entry.path, entry.body),
+      endpointPath: entry.path || "",
+      method: entry.method || "POST",
+      payload: entry.body || {},
+      syncStatus: syncStatusValues.pending,
+      createdAt: entry.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      syncedAt: null,
+      lastError: entry.lastError || null,
+      retryCount: 0,
+    });
+  }
+
+  setStructuredQueueInLocalStorage(getStructuredQueueFromLocalStorage());
+};
+
+const syncQueuedSubmission = async (queueItem, options = {}) => {
+  if (!queueItem?.localSubmissionId) {
+    return {
+      ok: false,
+      queued: false,
+      syncStatus: syncStatusValues.failed,
+      error: new Error("Missing local submission identifier."),
+    };
+  }
+
+  const existing = await getSyncQueueItem(queueItem.localSubmissionId);
+  const nextRetryCount = Number(existing?.retryCount || queueItem.retryCount || 0) + 1;
+  const syncingItem = await putSyncQueueItem({
+    ...(existing || queueItem),
+    syncStatus: syncStatusValues.syncing,
+    retryCount: nextRetryCount,
+    updatedAt: new Date().toISOString(),
+    lastError: null,
+  });
+  saveLocalSubmissionStatus(syncingItem);
+  await updateSyncStatusWidget();
+
+  try {
+    const response = await apiJsonRequest(syncingItem.endpointPath, {
+      method: syncingItem.method || "POST",
+      body: JSON.stringify({
+        ...(syncingItem.payload || {}),
+        localSubmissionId: syncingItem.localSubmissionId,
+      }),
+      keepalive: String(syncingItem.method || "POST").toUpperCase() === "POST",
+    });
+
+    await putSyncQueueItem({
+      ...syncingItem,
+      syncStatus: syncStatusValues.synced,
+      syncedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      retryCount: 0,
+      lastError: null,
+      response,
+    });
+    saveLocalSubmissionStatus({
+      ...syncingItem,
+      syncStatus: syncStatusValues.synced,
+      syncedAt: new Date().toISOString(),
+      lastError: null,
+    });
+    setLastSuccessfulSyncTime();
+    await confirmSyncedQueueItem(syncingItem);
+
+    await updateSyncStatusWidget();
+    if (!options.silent) {
+      setSyncStatusMessage(options.successMessage || "Submitted to server.");
+    }
+
+    return {
+      ok: true,
+      queued: false,
+      syncStatus: syncStatusValues.synced,
+      localSubmissionId: syncingItem.localSubmissionId,
+      response,
+    };
+  } catch (error) {
+    const nextStatus = shouldRetrySyncError(error) ? syncStatusValues.pending : syncStatusValues.failed;
+    await putSyncQueueItem({
+      ...syncingItem,
+      syncStatus: nextStatus,
+      updatedAt: new Date().toISOString(),
+      lastError: error instanceof Error ? error.message : String(error),
+      syncedAt: null,
+    });
+    saveLocalSubmissionStatus({
+      ...syncingItem,
+      syncStatus: nextStatus,
+      syncedAt: null,
+      lastError: error instanceof Error ? error.message : String(error),
+    });
+
+    await updateSyncStatusWidget();
+    if (!options.silent) {
+      setSyncStatusMessage(nextStatus === syncStatusValues.pending ? "Saved offline. This form will sync when internet returns." : "Sync failed. Please retry.");
+    }
+
+    return {
+      ok: false,
+      queued: nextStatus === syncStatusValues.pending,
+      syncStatus: nextStatus,
+      localSubmissionId: syncingItem.localSubmissionId,
+      error,
+    };
+  }
+};
+
+const retryPendingSyncSubmissions = async (options = {}) => {
+  const queue = await getAllSyncQueueItems();
+  const pendingItems = queue
+    .filter((item) => [syncStatusValues.pending, syncStatusValues.failed].includes(item.syncStatus))
+    .sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")));
+
+  if (pendingItems.length === 0) {
+    await updateSyncStatusWidget();
+    if (options.manual) {
+      setSyncStatusMessage("No pending submissions to sync.");
+    }
+    return [];
+  }
+
+  const results = [];
+  for (const item of pendingItems) {
+    results.push(await syncQueuedSubmission(item, { silent: true }));
+  }
+
+  await updateSyncStatusWidget();
+  const allSynced = results.every((result) => result.ok);
+  const anySynced = results.some((result) => result.ok);
+  if (anySynced) {
+    setSyncStatusMessage("Submitted to server.");
+  } else if (options.manual || !allSynced) {
+    setSyncStatusMessage("Some submissions are still pending sync.");
+  }
+
+  return results;
 };
 
 const isEligibleHouseholdStatus = (value) => {
@@ -220,78 +852,114 @@ const mergeEligibleHouseholds = (households = []) => {
   return Array.from(map.values()).sort((left, right) => String(left.householdId).localeCompare(String(right.householdId)));
 };
 
+const buildSubmittedFormsFromHouseholds = (households = []) => {
+  const submittedForms = {};
+
+  households.forEach((household) => {
+    if (!household?.householdId) {
+      return;
+    }
+
+    submittedForms[household.householdId] = {
+      headName: household.headName || household.selected_household_name || "",
+      household: "Submitted",
+      seaf: household.stageStatus?.seaf ? "Submitted" : "Pending",
+      engineering: household.stageStatus?.engineering ? "Submitted" : "Pending",
+      inventory: household.stageStatus?.inventory ? "Submitted" : "Pending",
+      updatedAt: household.updatedAt || null,
+    };
+  });
+
+  return submittedForms;
+};
+
+const syncSharedHouseholdStateFromBackend = async () => {
+  try {
+    const households = await apiJsonRequest(buildFreshApiPath("/api/households"));
+    if (!Array.isArray(households)) {
+      return null;
+    }
+
+    const eligibleHouseholds = households.filter((household) =>
+      isEligibleHouseholdStatus(household?.eligibilityStatus || household?.status)
+    );
+    const normalizedEligibleHouseholds = mergeEligibleHouseholds(eligibleHouseholds);
+    localStorage.setItem(eligibleHouseholdsStorageKey, JSON.stringify(normalizedEligibleHouseholds));
+
+    const backendSubmittedForms = buildSubmittedFormsFromHouseholds(households);
+    const mergedSubmittedForms = mergeSubmittedFormsRecords(readSubmittedForms(), backendSubmittedForms);
+    writeSubmittedForms(mergedSubmittedForms);
+
+    return {
+      households,
+      eligibleHouseholds: normalizedEligibleHouseholds,
+      submittedForms: mergedSubmittedForms,
+    };
+  } catch (error) {
+    return null;
+  }
+};
+
 const getEligibleHouseholdsForPicker = async () => {
   try {
-    const households = await apiJsonRequest("/api/households");
-    const eligibleHouseholds = Array.isArray(households)
-      ? households.filter((household) => isEligibleHouseholdStatus(household?.eligibilityStatus || household?.status))
-      : [];
-
-    const normalized = mergeEligibleHouseholds(eligibleHouseholds);
-    localStorage.setItem(eligibleHouseholdsStorageKey, JSON.stringify(normalized));
-    return normalized;
+    const syncedState = await syncSharedHouseholdStateFromBackend();
+    if (syncedState?.eligibleHouseholds) {
+      return syncedState.eligibleHouseholds;
+    }
   } catch (error) {
-    return mergeEligibleHouseholds(readEligibleHouseholds());
+    // Fall through to cached local data.
   }
+
+  return mergeEligibleHouseholds(readEligibleHouseholds());
 };
 
 const flushPendingSyncQueue = async () => {
-  const queue = readPendingSyncQueue();
-  if (queue.length === 0) {
-    return;
-  }
-
-  const remaining = [];
-
-  for (const entry of queue) {
-    try {
-      await apiJsonRequest(entry.path, {
-        method: entry.method || "POST",
-        body: JSON.stringify(entry.body || {}),
-      });
-    } catch (error) {
-      remaining.push(entry);
-    }
-  }
-
-  writePendingSyncQueue(remaining);
+  await retryPendingSyncSubmissions({ silent: true });
 };
 
-const queueBackendSync = (path, body, method = "POST") => {
+const queueBackendSync = (path, body, method = "POST", options = {}) => {
   return (async () => {
-    try {
-      const response = await apiJsonRequest(path, {
-        method,
-        body: JSON.stringify(body || {}),
-        keepalive: method.toUpperCase() === "POST",
-      });
-      return {
-        ok: true,
-        queued: false,
-        response,
-      };
-    } catch (error) {
-      enqueuePendingSync({
-        path,
-        method,
-        body,
-        lastError: error instanceof Error ? error.message : String(error),
-      });
-      return {
-        ok: false,
-        queued: true,
-        error,
-      };
-    }
+    const queueItem = await putSyncQueueItem({
+      localSubmissionId: options.localSubmissionId || body?.localSubmissionId || createLocalSubmissionId(),
+      householdId: body?.householdId || options.householdId || "",
+      formType: options.formType || inferFormTypeFromSyncPath(path, body),
+      endpointPath: path,
+      method,
+      payload: body || {},
+      syncStatus: syncStatusValues.pending,
+      createdAt: options.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      syncedAt: null,
+      lastError: null,
+      retryCount: 0,
+    });
+    saveLocalSubmissionStatus(queueItem);
+
+    await updateSyncStatusWidget();
+    return syncQueuedSubmission(queueItem, {
+      silent: Boolean(options.silent),
+      successMessage: options.successMessage || "Submitted successfully. Synced to server.",
+    });
   })();
 };
 
 window.addEventListener("online", () => {
   void flushPendingSyncQueue();
+  void syncSharedHouseholdStateFromBackend();
+  void updateSyncStatusWidget();
+});
+
+window.addEventListener("offline", () => {
+  void updateSyncStatusWidget();
+  setSyncStatusMessage("Offline mode active. Changes will sync later.");
 });
 
 window.setTimeout(() => {
+  ensureSyncStatusWidget();
+  void migrateLegacyPendingSyncQueue();
   void flushPendingSyncQueue();
+  void syncSharedHouseholdStateFromBackend();
+  void updateSyncStatusWidget();
 }, 0);
 
 const readSelectedHousehold = () => {
@@ -420,9 +1088,21 @@ const hydrateHouseholdRecordFromBackend = async (householdId) => {
   }
 
   try {
-    const record = await apiJsonRequest(`/api/households/${encodeURIComponent(householdId)}`);
+    const record = await apiJsonRequest(buildFreshApiPath(`/api/households/${encodeURIComponent(householdId)}`));
     if (record && typeof record === "object") {
       cacheHouseholdRecord(householdId, record);
+      writeSubmittedForms(
+        mergeSubmittedFormsRecords(readSubmittedForms(), {
+          [householdId]: {
+            headName: record.headName || "",
+            household: "Submitted",
+            seaf: record.stageStatus?.seaf ? "Submitted" : "Pending",
+            engineering: record.stageStatus?.engineering ? "Submitted" : "Pending",
+            inventory: record.stageStatus?.inventory ? "Submitted" : "Pending",
+            updatedAt: record.updatedAt || null,
+          },
+        })
+      );
       mergeSelectedHousehold({
         householdId,
         headName: record.headName || readSelectedHousehold()?.headName || "",
@@ -445,7 +1125,7 @@ const getFormSubmissionFromBackend = async (formKey, householdId) => {
   }
 
   try {
-    const entry = await apiJsonRequest(`/api/forms/${encodeURIComponent(formKey)}/${encodeURIComponent(householdId)}`);
+    const entry = await apiJsonRequest(buildFreshApiPath(`/api/forms/${encodeURIComponent(formKey)}/${encodeURIComponent(householdId)}`));
     return entry?.payload && typeof entry.payload === "object" ? entry.payload : null;
   } catch (error) {
     return null;
@@ -1397,42 +2077,11 @@ const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", sync
   if (!householdId) {
     return Promise.resolve(null);
   }
-
-  const submittedForms = readSubmittedForms();
-  const existing = submittedForms[householdId] || {};
-  const currentHeadName = selectedHouseholdNameInput ? selectedHouseholdNameInput.value.trim() : "";
-
-  submittedForms[householdId] = {
-    headName: existing.headName || currentHeadName,
-    seaf: existing.seaf || "Pending",
-    engineering: existing.engineering || "Pending",
-    inventory: existing.inventory || "Pending",
-    ...existing,
-    [formKey]: status,
-  };
-
-  writeSubmittedForms(submittedForms);
   const householdPatch = syncOptions.householdPatch && typeof syncOptions.householdPatch === "object"
     ? syncOptions.householdPatch
     : {};
-  upsertHouseholdRecord(householdId, {
-    ...householdPatch,
-    headName: currentHeadName || existing.headName || "",
-    stageStatus: {
-      seaf: submittedForms[householdId].seaf,
-      engineering: submittedForms[householdId].engineering,
-      inventory: submittedForms[householdId].inventory,
-    },
-  });
-
-  const selectedHousehold = readSelectedHousehold();
-  if (selectedHousehold?.householdId === householdId) {
-    mergeSelectedHousehold({
-      ...householdPatch,
-      householdId,
-      headName: currentHeadName || existing.headName || selectedHousehold.headName || "",
-    });
-  }
+  const existing = readSubmittedForms()[householdId] || {};
+  const currentHeadName = selectedHouseholdNameInput ? selectedHouseholdNameInput.value.trim() : "";
 
   const syncPromise = queueBackendSync(`/api/forms/${formKey}/submit`, {
     householdId,
@@ -1440,11 +2089,10 @@ const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", sync
     status,
     payload: syncOptions.payload || {},
     householdPatch,
+  }, "POST", {
+    formType: formKey,
+    successMessage: "Submitted successfully. Synced to server.",
   });
-
-  if (isHouseholdFullySubmitted(submittedForms[householdId])) {
-    removeEligibleHousehold(householdId);
-  }
 
   return syncPromise;
 };
@@ -1502,20 +2150,24 @@ const populateSubmittedFormsTable = () => {
 
   records.forEach((household) => {
     const status = household.status || {};
+    const seafSync = getLatestSubmissionStatusForItem(household.householdId, "seaf")?.syncStatus || syncStatusValues.draft;
+    const engineeringSync = getLatestSubmissionStatusForItem(household.householdId, "engineering")?.syncStatus || syncStatusValues.draft;
+    const inventorySync = getLatestSubmissionStatusForItem(household.householdId, "inventory")?.syncStatus || syncStatusValues.draft;
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${household.householdId || "-"}</td>
       <td>${household.headName || "-"}</td>
-      <td><span class="status-pill ${status.seaf === "Submitted" ? "is-submitted" : "is-pending"}">${status.seaf || "Pending"}</span></td>
-      <td><span class="status-pill ${status.engineering === "Submitted" ? "is-submitted" : "is-pending"}">${status.engineering || "Pending"}</span></td>
-      <td><span class="status-pill ${status.inventory === "Submitted" ? "is-submitted" : "is-pending"}">${status.inventory || "Pending"}</span></td>
+      <td><span class="status-pill ${status.seaf === "Submitted" ? "is-submitted" : "is-pending"}">${status.seaf === "Submitted" ? "Submitted" : getSyncStatusBadgeLabel(seafSync)}</span></td>
+      <td><span class="status-pill ${status.engineering === "Submitted" ? "is-submitted" : "is-pending"}">${status.engineering === "Submitted" ? "Submitted" : getSyncStatusBadgeLabel(engineeringSync)}</span></td>
+      <td><span class="status-pill ${status.inventory === "Submitted" ? "is-submitted" : "is-pending"}">${status.inventory === "Submitted" ? "Submitted" : getSyncStatusBadgeLabel(inventorySync)}</span></td>
     `;
     submittedFormsBody.append(row);
   });
 };
 
 if (submittedFormsDialog && openSubmittedFormsButton && closeSubmittedFormsButton) {
-  openSubmittedFormsButton.addEventListener("click", () => {
+  openSubmittedFormsButton.addEventListener("click", async () => {
+    await syncSharedHouseholdStateFromBackend();
     populateSubmittedFormsTable();
     submittedFormsDialog.showModal();
   });
@@ -2378,8 +3030,9 @@ if (inventoryForm) {
       }
 
       const inventoryPayload = collectInventorySubmissionPayload();
+      let syncResult;
       try {
-        await setSubmittedFormStatus(householdId, "inventory", "Submitted", {
+        syncResult = await setSubmittedFormStatus(householdId, "inventory", "Submitted", {
           payload: inventoryPayload,
           householdPatch: {
             inventoryCatchmentArea: inventoryPayload.catchmentArea,
@@ -2396,7 +3049,12 @@ if (inventoryForm) {
       }
 
       try {
-        sessionStorage.setItem(postRedirectMessageKey, `The Inventory form for household ID ${householdId} is submitted successfully.`);
+        const redirectMessage = syncResult?.syncStatus === syncStatusValues.synced
+          ? "Submitted successfully. Synced to server."
+          : syncResult?.syncStatus === syncStatusValues.pending
+            ? "Saved offline. This form will sync when internet returns."
+            : "Sync failed. Please retry.";
+        sessionStorage.setItem(postRedirectMessageKey, redirectMessage);
       } catch (error) {
         // Ignore sessionStorage errors.
       }
@@ -2634,8 +3292,9 @@ if (socioeconomicForm) {
       }
 
       const seafPayload = saveSeafResponse();
+      let syncResult;
       try {
-        await setSubmittedFormStatus(householdId, "seaf", "Submitted", {
+        syncResult = await setSubmittedFormStatus(householdId, "seaf", "Submitted", {
           payload: seafPayload || {},
           householdPatch: {
             seafFacilities: seafPayload?.facilities || [],
@@ -2647,7 +3306,12 @@ if (socioeconomicForm) {
       }
 
       try {
-        sessionStorage.setItem(postRedirectMessageKey, "The SEAF is submitted successfully.");
+        const redirectMessage = syncResult?.syncStatus === syncStatusValues.synced
+          ? "Submitted successfully. Synced to server."
+          : syncResult?.syncStatus === syncStatusValues.pending
+            ? "Saved offline. This form will sync when internet returns."
+            : "Sync failed. Please retry.";
+        sessionStorage.setItem(postRedirectMessageKey, redirectMessage);
       } catch (error) {
         // Ignore sessionStorage errors.
       }
@@ -3157,8 +3821,9 @@ if (engineeringForm) {
         }),
       };
 
+      let syncResult;
       try {
-        await setSubmittedFormStatus(householdId, "engineering", "Submitted", {
+        syncResult = await setSubmittedFormStatus(householdId, "engineering", "Submitted", {
           payload: engineeringPayload,
           householdPatch: {
             engineerName,
@@ -3182,7 +3847,12 @@ if (engineeringForm) {
       }
 
       try {
-        sessionStorage.setItem(postRedirectMessageKey, "The Engineering form is submitted successfully.");
+        const redirectMessage = syncResult?.syncStatus === syncStatusValues.synced
+          ? "Submitted successfully. Synced to server."
+          : syncResult?.syncStatus === syncStatusValues.pending
+            ? "Saved offline. This form will sync when internet returns."
+            : "Sync failed. Please retry.";
+        sessionStorage.setItem(postRedirectMessageKey, redirectMessage);
       } catch (error) {
         // Ignore sessionStorage errors.
       }
@@ -3875,7 +4545,12 @@ if (householdForm) {
         const eligibilityResult = getEligibilityResult();
         if (eligibilityResult.isEligible) {
           try {
-            await saveHouseholdAssessmentRecord("passed");
+            const syncResult = await saveHouseholdAssessmentRecord("passed");
+            if (syncResult?.syncStatus === syncStatusValues.pending) {
+              showFloatingMessage("Saved offline. This form will sync when internet returns.");
+            } else if (syncResult?.syncStatus === syncStatusValues.synced) {
+              showFloatingMessage("Submitted successfully. Synced to server.");
+            }
           } catch (error) {
             // Keep the local save and allow the user to continue.
           }
@@ -3884,7 +4559,12 @@ if (householdForm) {
         }
 
         try {
-          await saveHouseholdAssessmentRecord("failed");
+          const syncResult = await saveHouseholdAssessmentRecord("failed");
+          if (syncResult?.syncStatus === syncStatusValues.pending) {
+            showFloatingMessage("Saved offline. This form will sync when internet returns.");
+          } else if (syncResult?.syncStatus === syncStatusValues.synced) {
+            showFloatingMessage("Submitted successfully. Synced to server.");
+          }
         } catch (error) {
           // Keep the local save and continue to show the eligibility result.
         }
@@ -3910,17 +4590,22 @@ if (householdForm) {
         }
 
         saveEligibleHousehold();
+        let syncResult;
         try {
-          await saveHouseholdAssessmentRecord("passed");
+          syncResult = await saveHouseholdAssessmentRecord("passed");
         } catch (error) {
           feedback.textContent = "Household information was saved locally, but the backend/database save did not complete yet.";
           feedback.classList.add("form-feedback-error");
           feedback.classList.remove("form-feedback-success");
           return;
         }
-        feedback.textContent = "Respondant Information submitted successfully.";
-        feedback.classList.add("form-feedback-success");
-        feedback.classList.remove("form-feedback-error");
+        feedback.textContent = syncResult?.syncStatus === syncStatusValues.pending
+          ? "Saved offline. This form will sync when internet returns."
+          : syncResult?.syncStatus === syncStatusValues.synced
+            ? "Submitted successfully. Synced to server."
+            : "Sync failed. Please retry.";
+        feedback.classList.toggle("form-feedback-success", syncResult?.syncStatus !== syncStatusValues.failed);
+        feedback.classList.toggle("form-feedback-error", syncResult?.syncStatus === syncStatusValues.failed);
       }
       window.location.href = "index.html";
     });
