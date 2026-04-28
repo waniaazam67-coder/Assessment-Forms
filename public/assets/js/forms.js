@@ -17,7 +17,7 @@ const pendingSyncQueueStorageKey = "shehersaaz-pending-sync-queue";
 const localSubmissionStatusesStorageKey = "shehersaaz-local-submission-statuses";
 const lastSuccessfulSyncStorageKey = "shehersaaz-last-successful-sync-at";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
-const frontendAssetVersion = "v2";
+const frontendAssetVersion = "v3";
 
 const getConfiguredApiBaseUrl = () => {
   const metaTag = document.querySelector('meta[name="api-base-url"]');
@@ -186,6 +186,14 @@ const getLastSuccessfulSyncTime = () => localStorage.getItem(lastSuccessfulSyncS
 
 const normalizeSubmissionStatusValue = (value) => (value === "Submitted" ? "Submitted" : "Pending");
 
+const mergeSubmissionStageValue = (existingValue, nextValue) => {
+  if (existingValue === "Submitted" || nextValue === "Submitted") {
+    return "Submitted";
+  }
+
+  return "Pending";
+};
+
 const mergeSubmittedFormsRecords = (...sources) => {
   const merged = {};
 
@@ -204,10 +212,22 @@ const mergeSubmittedFormsRecords = (...sources) => {
         ...existing,
         ...record,
         headName: record.headName || existing.headName || "",
-        household: normalizeSubmissionStatusValue(record.household || existing.household),
-        seaf: normalizeSubmissionStatusValue(record.seaf || existing.seaf),
-        engineering: normalizeSubmissionStatusValue(record.engineering || existing.engineering),
-        inventory: normalizeSubmissionStatusValue(record.inventory || existing.inventory),
+        household: mergeSubmissionStageValue(
+          normalizeSubmissionStatusValue(existing.household),
+          normalizeSubmissionStatusValue(record.household)
+        ),
+        seaf: mergeSubmissionStageValue(
+          normalizeSubmissionStatusValue(existing.seaf),
+          normalizeSubmissionStatusValue(record.seaf)
+        ),
+        engineering: mergeSubmissionStageValue(
+          normalizeSubmissionStatusValue(existing.engineering),
+          normalizeSubmissionStatusValue(record.engineering)
+        ),
+        inventory: mergeSubmissionStageValue(
+          normalizeSubmissionStatusValue(existing.inventory),
+          normalizeSubmissionStatusValue(record.inventory)
+        ),
       };
     });
   });
@@ -2080,6 +2100,60 @@ const isHouseholdFullySubmitted = (submission = {}) => {
   return submission.seaf === "Submitted" && submission.engineering === "Submitted" && submission.inventory === "Submitted";
 };
 
+const hasSubmittedForm = (submission = {}, formKey = "") => {
+  if (!formKey) {
+    return false;
+  }
+
+  return String(submission[formKey] || "").trim().toLowerCase() === "submitted";
+};
+
+const getFormTypeFromTargetHref = (targetHref = "") => {
+  try {
+    const targetUrl = new URL(targetHref, window.location.href);
+    const pathname = targetUrl.pathname.toLowerCase();
+
+    if (pathname.endsWith("/socioeconomic-assessment.html")) {
+      return "seaf";
+    }
+    if (pathname.endsWith("/engineering-assessment.html")) {
+      return "engineering";
+    }
+    if (pathname.endsWith("/inventory.html")) {
+      return "inventory";
+    }
+    if (pathname.endsWith("/household-information.html")) {
+      return "household";
+    }
+  } catch (error) {
+    const normalizedHref = String(targetHref || "").toLowerCase();
+
+    if (normalizedHref.includes("socioeconomic-assessment.html")) {
+      return "seaf";
+    }
+    if (normalizedHref.includes("engineering-assessment.html")) {
+      return "engineering";
+    }
+    if (normalizedHref.includes("inventory.html")) {
+      return "inventory";
+    }
+    if (normalizedHref.includes("household-information.html")) {
+      return "household";
+    }
+  }
+
+  return "";
+};
+
+const filterEligibleHouseholdsForForm = (households = [], formKey = "") => {
+  if (!formKey || formKey === "household") {
+    return households;
+  }
+
+  const submittedForms = readSubmittedForms();
+  return households.filter((household) => !hasSubmittedForm(submittedForms[household?.householdId], formKey));
+};
+
 const readSeafResponses = () => {
   try {
     const storedResponses = localStorage.getItem(seafResponsesStorageKey);
@@ -2098,6 +2172,7 @@ const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", sync
   if (!householdId) {
     return Promise.resolve(null);
   }
+  confirmSubmittedFormStatus(householdId, formKey, status, syncOptions);
   const householdPatch = syncOptions.householdPatch && typeof syncOptions.householdPatch === "object"
     ? syncOptions.householdPatch
     : {};
@@ -2294,7 +2369,8 @@ if (householdPickerLinks.length > 0) {
     pickerList.innerHTML = '<p class="household-picker-empty">Loading households...</p>';
     picker.hidden = false;
 
-    const households = await getEligibleHouseholdsForPicker();
+    const targetFormKey = getFormTypeFromTargetHref(targetHref);
+    const households = filterEligibleHouseholdsForForm(await getEligibleHouseholdsForPicker(), targetFormKey);
     pickerList.innerHTML = "";
 
     if (households.length === 0) {

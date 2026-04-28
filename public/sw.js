@@ -1,8 +1,8 @@
-const CACHE_NAME = "shehersaaz-v2";
+const CACHE_NAME = "shehersaaz-v3";
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const IMAGE_CACHE = `${CACHE_NAME}-images`;
 const LEGACY_CACHE_PREFIXES = ["app-shell-", "shehersaaz-app-", "shehersaaz-"];
-const ASSET_VERSION = "v2";
+const ASSET_VERSION = "v3";
 
 const PRECACHE_URLS = [
   "/",
