@@ -17,7 +17,7 @@ const pendingSyncQueueStorageKey = "shehersaaz-pending-sync-queue";
 const localSubmissionStatusesStorageKey = "shehersaaz-local-submission-statuses";
 const lastSuccessfulSyncStorageKey = "shehersaaz-last-successful-sync-at";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
-const frontendAssetVersion = "v3";
+const frontendAssetVersion = "v4";
 
 const getConfiguredApiBaseUrl = () => {
   const metaTag = document.querySelector('meta[name="api-base-url"]');
@@ -320,6 +320,25 @@ const apiJsonRequest = async (path, options = {}) => {
 const buildFreshApiPath = (path) => {
   const separator = path.includes("?") ? "&" : "?";
   return `${path}${separator}t=${Date.now()}`;
+};
+
+const getStageSubmissionFlag = (household = {}, formKey = "") => {
+  if (!formKey || formKey === "household") {
+    return false;
+  }
+
+  return Boolean(household?.stageStatus?.[formKey]);
+};
+
+const logEligibleHouseholdCounts = (households = []) => {
+  const eligibleForSeaf = households.filter((household) => !getStageSubmissionFlag(household, "seaf"));
+  const eligibleForEngineering = households.filter((household) => !getStageSubmissionFlag(household, "engineering"));
+  const eligibleForInventory = households.filter((household) => !getStageSubmissionFlag(household, "inventory"));
+
+  console.log("Loaded households from backend:", households.length);
+  console.log("Eligible for SEAF:", eligibleForSeaf.length);
+  console.log("Eligible for Engineering:", eligibleForEngineering.length);
+  console.log("Eligible for Inventory:", eligibleForInventory.length);
 };
 
 const createLocalSubmissionId = () => {
@@ -887,6 +906,18 @@ const mergeEligibleHouseholds = (households = []) => {
       respondentCnic: household.respondentCnic || household.respondent_cnic || "",
       headCnic: household.headCnic || household.head_cnic || "",
       eligibilityStatus: household.eligibilityStatus || household.status || "",
+      stageStatus: household.stageStatus && typeof household.stageStatus === "object"
+        ? {
+            seaf: Boolean(household.stageStatus.seaf),
+            engineering: Boolean(household.stageStatus.engineering),
+            inventory: Boolean(household.stageStatus.inventory),
+          }
+        : {
+            seaf: false,
+            engineering: false,
+            inventory: false,
+          },
+      updatedAt: household.updatedAt || null,
     });
   });
 
@@ -916,7 +947,9 @@ const buildSubmittedFormsFromHouseholds = (households = []) => {
 
 const syncSharedHouseholdStateFromBackend = async () => {
   try {
-    const households = await apiJsonRequest(buildFreshApiPath("/api/households"));
+    const households = await apiJsonRequest(buildFreshApiPath("/api/households"), {
+      cache: "no-store",
+    });
     if (!Array.isArray(households)) {
       return null;
     }
@@ -925,6 +958,7 @@ const syncSharedHouseholdStateFromBackend = async () => {
       isEligibleHouseholdStatus(household?.eligibilityStatus || household?.status)
     );
     const normalizedEligibleHouseholds = mergeEligibleHouseholds(eligibleHouseholds);
+    logEligibleHouseholdCounts(normalizedEligibleHouseholds);
     localStorage.setItem(eligibleHouseholdsStorageKey, JSON.stringify(normalizedEligibleHouseholds));
 
     const backendSubmittedForms = buildSubmittedFormsFromHouseholds(households);
@@ -2151,7 +2185,11 @@ const filterEligibleHouseholdsForForm = (households = [], formKey = "") => {
   }
 
   const submittedForms = readSubmittedForms();
-  return households.filter((household) => !hasSubmittedForm(submittedForms[household?.householdId], formKey));
+  return households.filter((household) => {
+    const backendStageSubmitted = getStageSubmissionFlag(household, formKey);
+    const localStageSubmitted = hasSubmittedForm(submittedForms[household?.householdId], formKey);
+    return !backendStageSubmitted && !localStageSubmitted;
+  });
 };
 
 const readSeafResponses = () => {
@@ -2190,7 +2228,17 @@ const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", sync
     successMessage: "Submitted successfully. Synced to server.",
   });
 
-  return syncPromise;
+  return syncPromise.then(async (result) => {
+    if (result?.syncStatus === syncStatusValues.synced) {
+      try {
+        await syncSharedHouseholdStateFromBackend();
+      } catch (error) {
+        // Keep the successful submit result even if the refresh fails.
+      }
+    }
+
+    return result;
+  });
 };
 
 const populateSubmittedFormsTable = () => {

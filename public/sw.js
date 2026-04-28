@@ -1,8 +1,8 @@
-const CACHE_NAME = "shehersaaz-v3";
+const CACHE_NAME = "shehersaaz-v4";
 const STATIC_CACHE = `${CACHE_NAME}-static`;
 const IMAGE_CACHE = `${CACHE_NAME}-images`;
 const LEGACY_CACHE_PREFIXES = ["app-shell-", "shehersaaz-app-", "shehersaaz-"];
-const ASSET_VERSION = "v3";
+const ASSET_VERSION = "v4";
 
 const PRECACHE_URLS = [
   "/",
@@ -106,7 +106,7 @@ self.addEventListener("fetch", (event) => {
 
   if (requestUrl.pathname.startsWith("/api/")) {
     event.respondWith(
-      fetch(event.request).catch(() => new Response(JSON.stringify({ error: "Unable to reach the backend API." }), {
+      fetch(event.request, { cache: "no-store" }).catch(() => new Response(JSON.stringify({ error: "Unable to reach the backend API." }), {
         status: 503,
         headers: {
           "Content-Type": "application/json",
