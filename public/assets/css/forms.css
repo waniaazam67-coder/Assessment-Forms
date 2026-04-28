@@ -644,7 +644,10 @@ select {
 }
 
 .household-picker-card {
+  display: flex;
+  flex-direction: column;
   width: min(640px, 100%);
+  max-height: min(760px, calc(100vh - 36px));
   border: 1px solid var(--card-border);
   border-radius: 24px;
   background: #ffffff;
@@ -689,6 +692,10 @@ select {
 }
 
 .household-picker-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
   padding: 22px 28px 28px;
 }
 
@@ -701,8 +708,13 @@ select {
 
 .household-picker-list {
   display: grid;
+  flex: 1;
   gap: 12px;
   margin-top: 18px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
 }
 
 .household-picker-option {
