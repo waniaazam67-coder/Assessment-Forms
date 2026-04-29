@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../../assets/css/admin.css?v=2026-04-28-02">
-  <script src="../../assets/js/app-config.js?v=2026-04-28-02"></script>
-  <script src="../../assets/js/admin.js?v=2026-04-28-02" defer></script>
+  <link rel="stylesheet" href="../../assets/css/admin.css?v=2026-04-29-03">
+  <script src="../../assets/js/app-config.js?v=2026-04-29-03"></script>
+  <script src="../../assets/js/admin.js?v=2026-04-29-03" defer></script>
 </head>
 <body class="admin-shell">
   <main class="admin-layout">
@@ -25,18 +25,18 @@
             <a href="#overview" class="admin-nav__link is-active" data-admin-nav-link>
               <span class="admin-nav__text">Overview</span>
             </a>
-            <a href="#progress" class="admin-nav__link" data-admin-nav-link>
-              <span class="admin-nav__text">Progress Table</span>
-            </a>
-            <a href="#search" class="admin-nav__link" data-admin-nav-link>
-              <span class="admin-nav__text">Search &amp; Filter</span>
-            </a>
             <a href="#household-details" class="admin-nav__link" data-admin-nav-link>
               <span class="admin-nav__text">Household Details</span>
             </a>
             <a href="#export" class="admin-nav__link" data-admin-nav-link>
               <span class="admin-nav__text">Export Data</span>
             </a>
+          </nav>
+        </section>
+
+        <section class="admin-nav-group" aria-labelledby="sidebar-dev-heading">
+          <p class="admin-nav-group__label" id="sidebar-dev-heading">Development / Super Admin</p>
+          <nav class="admin-nav" aria-label="Development sections">
             <a href="#sync-monitoring" class="admin-nav__link" data-admin-nav-link>
               <span class="admin-nav__text">Sync Monitoring</span>
             </a>
@@ -55,7 +55,7 @@
         <section class="admin-nav-group" aria-labelledby="sidebar-general-heading">
           <p class="admin-nav-group__label" id="sidebar-general-heading">General</p>
           <div class="admin-nav admin-nav--secondary">
-            <a class="admin-nav__link" href="../index.html?v=2026-04-28-02">
+            <a class="admin-nav__link" href="../index.html?v=2026-04-29-03">
               <span class="admin-nav__text">Forms Portal</span>
             </a>
           </div>
@@ -102,95 +102,30 @@
           </article>
         </section>
 
-        <section class="admin-page" id="progress" data-admin-page hidden>
-          <article class="admin-card">
-            <div class="admin-card__header">
-              <div>
-                <h3>Progress table</h3>
-                <p class="admin-card__subtitle">Household submission status from backend data</p>
-              </div>
-            </div>
-            <div class="admin-table-wrap">
-              <table class="admin-table admin-table--dashboard">
-                <thead>
-                  <tr>
-                    <th>Household ID</th>
-                    <th>Head Name</th>
-                    <th>Location</th>
-                    <th>Phone</th>
-                    <th>Household Info</th>
-                    <th>SEAF</th>
-                    <th>Engineering</th>
-                    <th>Inventory</th>
-                    <th>Last Updated</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody data-admin-progress-table-body></tbody>
-              </table>
-            </div>
-          </article>
-        </section>
-
-        <section class="admin-page" id="search" data-admin-page hidden>
-          <article class="admin-card">
-            <div class="admin-card__header">
-              <div>
-                <h3>Search and filter</h3>
-                <p class="admin-card__subtitle">Search by household ID, head name, location, or phone</p>
-              </div>
-            </div>
-            <div class="admin-filters admin-filters--dashboard">
-              <label class="admin-filter">
-                <span>Search</span>
-                <input type="search" placeholder="Household ID, head name, location, phone" data-admin-search>
-              </label>
-              <label class="admin-filter">
-                <span>Filter</span>
-                <select data-admin-filter-status>
-                  <option value="all">All</option>
-                  <option value="fully-completed">Fully Completed</option>
-                  <option value="incomplete">Incomplete</option>
-                  <option value="seaf-pending">SEAF Pending</option>
-                  <option value="engineering-pending">Engineering Pending</option>
-                  <option value="inventory-pending">Inventory Pending</option>
-                </select>
-              </label>
-            </div>
-            <div class="admin-table-wrap">
-              <table class="admin-table admin-table--dashboard">
-                <thead>
-                  <tr>
-                    <th>Household ID</th>
-                    <th>Head Name</th>
-                    <th>Location</th>
-                    <th>Phone</th>
-                    <th>Household Info</th>
-                    <th>SEAF</th>
-                    <th>Engineering</th>
-                    <th>Inventory</th>
-                    <th>Last Updated</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody data-admin-search-table-body></tbody>
-              </table>
-            </div>
-          </article>
-        </section>
-
         <section class="admin-page" id="household-details" data-admin-page hidden>
           <article class="admin-card">
             <div class="admin-card__header">
               <div>
-                <h3>Household detailed view</h3>
-                <p class="admin-card__subtitle">Read-only household lookup</p>
+                <h3>Household details</h3>
+                <p class="admin-card__subtitle">Review household progress and use location and date filters to narrow the list.</p>
               </div>
             </div>
             <div class="admin-filters admin-filters--dashboard">
               <label class="admin-filter">
-                <span>Search household</span>
-                <input type="search" placeholder="Enter household ID" data-admin-details-search>
+                <span>Location</span>
+                <select data-admin-filter-location>
+                  <option value="all">All</option>
+                  <option value="rawalpindi">Rawalpindi</option>
+                  <option value="nowshera">Nowshera</option>
+                </select>
+              </label>
+              <label class="admin-filter">
+                <span>From date</span>
+                <input type="date" data-admin-filter-start-date>
+              </label>
+              <label class="admin-filter">
+                <span>To date</span>
+                <input type="date" data-admin-filter-end-date>
               </label>
               <label class="admin-filter">
                 <span>Select household</span>
@@ -199,8 +134,36 @@
                 </select>
               </label>
             </div>
+            <div class="admin-table-wrap">
+              <table class="admin-table admin-table--dashboard">
+                <thead>
+                  <tr>
+                    <th>Household ID</th>
+                    <th>Head Name</th>
+                    <th>Location</th>
+                    <th>Survey Date</th>
+                    <th>Phone</th>
+                    <th>Household Info</th>
+                    <th>SEAF</th>
+                    <th>Engineering</th>
+                    <th>Inventory</th>
+                    <th>Last Updated</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody data-admin-household-table-body></tbody>
+              </table>
+            </div>
+            <div class="admin-card admin-card--nested">
+              <div class="admin-card__header">
+                <div>
+                  <h3>Selected household</h3>
+                  <p class="admin-card__subtitle">Open a row from the table or choose a household from the dropdown to see details.</p>
+                </div>
+              </div>
             <div data-admin-details-panel>
               <div class="admin-placeholder">Select a household to see details.</div>
+            </div>
             </div>
           </article>
         </section>
@@ -212,6 +175,16 @@
                 <h3>Export data</h3>
                 <p class="admin-card__subtitle">CSV export from backend MySQL data</p>
               </div>
+            </div>
+            <div class="admin-filters admin-filters--dashboard">
+              <label class="admin-filter">
+                <span>From date</span>
+                <input type="date" data-admin-export-start-date>
+              </label>
+              <label class="admin-filter">
+                <span>To date</span>
+                <input type="date" data-admin-export-end-date>
+              </label>
             </div>
             <div class="admin-actions admin-actions--export-panel">
               <button type="button" class="admin-button" data-admin-export-seaf-csv>Download SEAF CSV</button>
@@ -328,5 +301,22 @@
       </div>
     </section>
   </main>
+
+  <dialog class="admin-dialog" data-admin-ineligible-dialog aria-labelledby="admin-ineligible-title">
+    <div class="admin-dialog__content">
+      <div class="admin-card__header">
+        <div>
+          <p class="admin-nav-group__label">Overview</p>
+          <h3 id="admin-ineligible-title">Ineligible Households</h3>
+          <p class="admin-card__subtitle">Select a household to see why it was marked ineligible.</p>
+        </div>
+        <button type="button" class="admin-button admin-button--ghost admin-button--small" data-admin-ineligible-close>Close</button>
+      </div>
+      <div class="admin-ineligible-layout">
+        <div class="admin-ineligible-list" data-admin-ineligible-list></div>
+        <div class="admin-placeholder admin-ineligible-detail" data-admin-ineligible-detail>Select a household to see why it is not eligible.</div>
+      </div>
+    </div>
+  </dialog>
 </body>
 </html>

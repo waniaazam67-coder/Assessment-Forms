@@ -1169,16 +1169,44 @@ const getExportColumnNamesForTable = async (connection, tableName) => {
     .filter((columnName) => isSimpleExportColumn(tableName, columnName));
 };
 
-const listTableExportRows = async (tableName) =>
+const buildDateRangeWhereClause = (dateFieldExpression, filters = {}) => {
+  const clauses = [];
+  const params = [];
+  const startDate = String(filters.startDate || "").trim();
+  const endDate = String(filters.endDate || "").trim();
+
+  if (startDate) {
+    clauses.push(`DATE(${dateFieldExpression}) >= ?`);
+    params.push(startDate);
+  }
+
+  if (endDate) {
+    clauses.push(`DATE(${dateFieldExpression}) <= ?`);
+    params.push(endDate);
+  }
+
+  return {
+    whereSql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    params,
+  };
+};
+
+const listTableExportRows = async (tableName, filters = {}) =>
   withConnection(async (connection) => {
     const columns = await getExportColumnNamesForTable(connection, tableName);
     if (!columns.length) {
       return [];
     }
 
-    const selectSql = columns.map((columnName) => escapeSqlIdentifier(columnName)).join(", ");
+    const selectSql = columns.map((columnName) => `t.${escapeSqlIdentifier(columnName)}`).join(", ");
+    const { whereSql, params } = buildDateRangeWhereClause("COALESCE(NULLIF(h.survey_date, ''), DATE(t.updated_at))", filters);
     const [rows] = await connection.query(
-      `SELECT ${selectSql} FROM ${escapeSqlIdentifier(tableName)} ORDER BY updated_at DESC, household_id DESC`
+      `SELECT ${selectSql}
+       FROM ${escapeSqlIdentifier(tableName)} t
+       LEFT JOIN ${escapeSqlIdentifier(tableNames.household)} h ON h.household_id = t.household_id
+       ${whereSql}
+       ORDER BY t.updated_at DESC, t.household_id DESC`,
+      params
     );
 
     return rows.map((row) =>
@@ -1189,7 +1217,7 @@ const listTableExportRows = async (tableName) =>
     );
   });
 
-const listCombinedExportRows = async () =>
+const listCombinedExportRows = async (filters = {}) =>
   withConnection(async (connection) => {
     const householdColumns = await getExportColumnNamesForTable(connection, tableNames.household);
     const socioColumns = await getExportColumnNamesForTable(connection, tableNames.socio);
@@ -1224,6 +1252,7 @@ const listCombinedExportRows = async () =>
     const selectSql = joinedColumnSpecs
       .map(({ expression, alias }) => `${expression} AS ${escapeSqlIdentifier(alias)}`)
       .join(", ");
+    const { whereSql, params } = buildDateRangeWhereClause("COALESCE(NULLIF(h.survey_date, ''), DATE(h.updated_at))", filters);
 
     const [rows] = await connection.query(
       `SELECT ${selectSql}
@@ -1231,7 +1260,9 @@ const listCombinedExportRows = async () =>
        LEFT JOIN ${escapeSqlIdentifier(tableNames.socio)} s ON s.household_id = h.household_id
        LEFT JOIN ${escapeSqlIdentifier(tableNames.engineering)} e ON e.household_id = h.household_id
        LEFT JOIN ${escapeSqlIdentifier(tableNames.inventory)} i ON i.household_id = h.household_id
-       ORDER BY h.updated_at DESC, h.household_id DESC`
+       ${whereSql}
+       ORDER BY h.updated_at DESC, h.household_id DESC`,
+      params
     );
 
     return rows.map((row) =>
@@ -1430,6 +1461,22 @@ const listAdminDashboardData = async () => {
   const engineeringMap = new Map(engineeringRows[0].map((row) => [row.household_id, row]));
   const inventoryMap = new Map(inventoryRows[0].map((row) => [row.household_id, row]));
   const syncMap = new Map();
+  const getEligibilityReason = (householdRow = {}) => {
+    const eligibilityStatus = String(householdRow.eligibility_status || "").trim().toLowerCase();
+    if (eligibilityStatus !== "failed" && eligibilityStatus !== "ineligible") {
+      return "";
+    }
+
+    const catchmentArea = String(householdRow.catchment_area || "").trim().toLowerCase();
+    const tankSpace = String(householdRow.tank_space || "").trim().toLowerCase();
+    if (catchmentArea !== "yes") {
+      return "Catchment criteria not met";
+    }
+    if (tankSpace !== "yes") {
+      return "Tank space not available";
+    }
+    return "Eligibility criteria not met";
+  };
 
   syncRows[0].forEach((row) => {
     const householdId = String(row.household_id || "").trim();
@@ -1463,7 +1510,7 @@ const listAdminDashboardData = async () => {
     ...inventoryMap.keys(),
   ]);
 
-  const households = Array.from(householdIds)
+  const allHouseholds = Array.from(householdIds)
     .map((householdId) => {
       const householdRow = householdMap.get(householdId) || {};
       const statusRow = statusMap.get(householdId) || {};
@@ -1515,7 +1562,13 @@ const listAdminDashboardData = async () => {
           statusRow.selected_household_name ||
           "",
         location: householdRow.household_location || householdRow.city || householdRow.ucnc || householdRow.interview_address || "",
+        city: householdRow.city || "",
+        surveyDate: householdRow.survey_date || "",
         phone: householdRow.respondent_phone_number || "",
+        eligibilityStatus: householdRow.eligibility_status || "",
+        ineligibleReason: getEligibilityReason(householdRow),
+        catchmentArea: householdRow.catchment_area || "",
+        tankSpace: householdRow.tank_space || "",
         updatedAt,
         stages: {
           householdInfo: householdInfoStage,
@@ -1533,6 +1586,9 @@ const listAdminDashboardData = async () => {
 
       return String(left.householdId || "").localeCompare(String(right.householdId || ""));
     });
+
+  const ineligibleHouseholds = allHouseholds.filter((household) => household.ineligibleReason);
+  const households = allHouseholds.filter((household) => !household.ineligibleReason);
 
   const summary = households.reduce(
     (accumulator, household) => {
@@ -1562,15 +1618,19 @@ const listAdminDashboardData = async () => {
       seafSubmitted: 0,
       engineeringSubmitted: 0,
       inventorySubmitted: 0,
+      ineligibleHouseholds: 0,
       fullyCompleted: 0,
       incomplete: 0,
     }
   );
 
+  summary.ineligibleHouseholds = ineligibleHouseholds.length;
+
   return {
     ok: true,
     summary,
     households,
+    ineligibleHouseholds,
   };
 };
 

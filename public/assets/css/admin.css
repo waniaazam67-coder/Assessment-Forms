@@ -832,7 +832,7 @@ select {
 }
 
 .admin-filters--dashboard {
-  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .admin-table-wrap {
@@ -953,6 +953,59 @@ select {
   box-shadow: var(--admin-shadow);
 }
 
+.admin-overview-card.is-clickable {
+  cursor: pointer;
+}
+
+.admin-overview-card.is-clickable:hover,
+.admin-overview-card.is-clickable:focus-within {
+  transform: translateY(-2px);
+}
+
+.admin-ineligible-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.admin-ineligible-list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.admin-ineligible-detail {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  font-size: 1.02rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.admin-list-button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 16px;
+  text-align: left;
+  border: 1px solid var(--admin-line);
+  border-radius: 18px;
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  cursor: pointer;
+}
+
+.admin-list-button.is-active,
+.admin-list-button:hover,
+.admin-list-button:focus-visible {
+  border-color: rgba(47, 128, 216, 0.42);
+  background: var(--admin-blue-soft);
+}
+
 .admin-details-grid,
 .admin-details-stages {
   display: grid;
@@ -968,6 +1021,13 @@ select {
 .admin-page .admin-summary-grid + .admin-table-wrap,
 .admin-page .admin-filters + .admin-table-wrap {
   margin-top: 18px;
+}
+
+.admin-card--nested {
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: 22px;
+  background: var(--admin-surface-soft);
 }
 
 @media (max-width: 1200px) {
@@ -989,7 +1049,8 @@ select {
   .admin-summary-grid,
   .admin-household-list,
   .admin-details-grid,
-  .admin-details-stages {
+  .admin-details-stages,
+  .admin-ineligible-layout {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1016,7 +1077,8 @@ select {
   .admin-household-list,
   .admin-filters,
   .admin-details-grid,
-  .admin-details-stages {
+  .admin-details-stages,
+  .admin-ineligible-layout {
     grid-template-columns: 1fr;
   }
 

@@ -1,6 +1,6 @@
 const AUTH_KEY = "shehersaaz-management-dashboard-auth";
 const MANAGEMENT_EMAIL = "beenish.kulsoom@shehersaaz.org.pk";
-const DASHBOARD_VERSION = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-04-28-02";
+const DASHBOARD_VERSION = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-04-29-03";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
 
 const getConfiguredApiBaseUrl = () => {
@@ -179,34 +179,42 @@ function isFullyCompleted(household) {
 }
 
 function getHouseholdSearchText(household) {
-  return [household.householdId, household.headName, household.location, household.phone]
+  return [household.householdId, household.headName, household.location, household.city, household.phone]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
 }
 
-function filterHouseholds(households, searchTerm = "", filterValue = "all") {
-  const normalizedSearch = String(searchTerm || "").trim().toLowerCase();
-  const normalizedFilter = String(filterValue || "all").trim().toLowerCase();
+function getHouseholdDateValue(household) {
+  return String(household?.surveyDate || household?.updatedAt || "").trim();
+}
+
+function isWithinDateRange(value, startDate = "", endDate = "") {
+  if (!value) {
+    return !startDate && !endDate;
+  }
+
+  const normalizedValue = value.includes("T") ? value.slice(0, 10) : value;
+  if (startDate && normalizedValue < startDate) {
+    return false;
+  }
+  if (endDate && normalizedValue > endDate) {
+    return false;
+  }
+  return true;
+}
+
+function filterHouseholds(households, options = {}) {
+  const normalizedLocation = String(options.location || "all").trim().toLowerCase();
+  const startDate = String(options.startDate || "").trim();
+  const endDate = String(options.endDate || "").trim();
 
   return households.filter((household) => {
-    if (normalizedSearch && !getHouseholdSearchText(household).includes(normalizedSearch)) {
+    if (!isWithinDateRange(getHouseholdDateValue(household), startDate, endDate)) {
       return false;
     }
-    if (normalizedFilter === "fully-completed") {
-      return isFullyCompleted(household);
-    }
-    if (normalizedFilter === "incomplete") {
-      return !isFullyCompleted(household);
-    }
-    if (normalizedFilter === "seaf-pending") {
-      return !household?.stages?.seaf?.submitted;
-    }
-    if (normalizedFilter === "engineering-pending") {
-      return !household?.stages?.engineering?.submitted;
-    }
-    if (normalizedFilter === "inventory-pending") {
-      return !household?.stages?.inventory?.submitted;
+    if (normalizedLocation !== "all" && !getHouseholdSearchText(household).includes(normalizedLocation)) {
+      return false;
     }
     return true;
   });
@@ -219,7 +227,7 @@ function renderSummaryCards(container, summary = {}) {
 
   const cards = [
     ["Total Households", summary.totalHouseholds || 0],
-    ["Household Info Submitted", summary.householdInfoSubmitted || 0],
+    ["Ineligible HH", summary.ineligibleHouseholds || 0],
     ["SEAF Submitted", summary.seafSubmitted || 0],
     ["Engineering Submitted", summary.engineeringSubmitted || 0],
     ["Inventory Submitted", summary.inventorySubmitted || 0],
@@ -229,7 +237,7 @@ function renderSummaryCards(container, summary = {}) {
 
   container.innerHTML = cards.map(
     ([label, value]) => `
-      <article class="admin-overview-card admin-metric admin-metric--compact">
+      <article class="admin-overview-card admin-metric admin-metric--compact${label === "Ineligible HH" ? " is-clickable" : ""}"${label === "Ineligible HH" ? ' data-admin-open-ineligible-dialog="true"' : ""}>
         <span class="admin-metric__label">${escapeHtml(label)}</span>
         <strong class="admin-metric__value">${escapeHtml(value)}</strong>
       </article>
@@ -243,7 +251,7 @@ function renderHouseholdTable(container, households, onViewDetails) {
   }
 
   if (!households.length) {
-    container.innerHTML = `<tr><td colspan="10" class="admin-table__empty">No households found.</td></tr>`;
+    container.innerHTML = `<tr><td colspan="11" class="admin-table__empty">No households found.</td></tr>`;
     return;
   }
 
@@ -252,6 +260,7 @@ function renderHouseholdTable(container, households, onViewDetails) {
       <td>${escapeHtml(household.householdId || "-")}</td>
       <td>${escapeHtml(household.headName || "-")}</td>
       <td>${escapeHtml(household.location || "-")}</td>
+      <td>${escapeHtml(household.surveyDate || "-")}</td>
       <td>${escapeHtml(household.phone || "-")}</td>
       <td><span class="admin-chip admin-chip--${getStatusTone(household.stages.householdInfo.label)}">${escapeHtml(household.stages.householdInfo.label)}</span></td>
       <td><span class="admin-chip admin-chip--${getStatusTone(household.stages.seaf.label)}">${escapeHtml(household.stages.seaf.label)}</span></td>
@@ -302,8 +311,20 @@ function renderDetailsPanel(container, household) {
         <span>Location</span>
       </article>
       <article class="admin-summary-card">
+        <strong>${escapeHtml(household.surveyDate || "-")}</strong>
+        <span>Survey Date</span>
+      </article>
+      <article class="admin-summary-card">
         <strong>${escapeHtml(household.phone || "-")}</strong>
         <span>Phone</span>
+      </article>
+      <article class="admin-summary-card">
+        <strong>${escapeHtml(household.eligibilityStatus || "-")}</strong>
+        <span>Eligibility</span>
+      </article>
+      <article class="admin-summary-card">
+        <strong>${escapeHtml(household.ineligibleReason || "-")}</strong>
+        <span>Ineligible Reason</span>
       </article>
     </div>
     <div class="admin-details-stages">
@@ -535,7 +556,7 @@ async function bootDashboardPage() {
   }
 
   const state = {
-    dashboard: { summary: {}, households: [] },
+    dashboard: { summary: {}, households: [], ineligibleHouseholds: [] },
     users: [],
     syncMonitoring: null,
     duplicates: null,
@@ -550,26 +571,21 @@ async function bootDashboardPage() {
     pages: Array.from(document.querySelectorAll("[data-admin-page]")),
     navLinks: Array.from(document.querySelectorAll("[data-admin-nav-link]")),
     summaryCards: document.querySelector("[data-admin-summary-cards]"),
-    progressTableBody: document.querySelector("[data-admin-progress-table-body]"),
-    searchInput: document.querySelector("[data-admin-search]"),
-    filterSelect: document.querySelector("[data-admin-filter-status]"),
-    searchTableBody: document.querySelector("[data-admin-search-table-body]"),
-    detailsSearch: document.querySelector("[data-admin-details-search]"),
+    filterLocation: document.querySelector("[data-admin-filter-location]"),
+    filterStartDate: document.querySelector("[data-admin-filter-start-date]"),
+    filterEndDate: document.querySelector("[data-admin-filter-end-date]"),
+    householdTableBody: document.querySelector("[data-admin-household-table-body]"),
     detailsSelect: document.querySelector("[data-admin-details-select]"),
     detailsPanel: document.querySelector("[data-admin-details-panel]"),
     refreshButton: document.querySelector("[data-admin-refresh]"),
     refreshHealthButton: document.querySelector("[data-admin-refresh-health]"),
     logoutButton: document.querySelector("[data-admin-logout]"),
-    exportVisible: document.querySelector("[data-admin-export-visible]"),
-    exportAll: document.querySelector("[data-admin-export-all]"),
-    exportIncomplete: document.querySelector("[data-admin-export-incomplete]"),
-    exportSeafPending: document.querySelector("[data-admin-export-seaf-pending]"),
-    exportEngineeringPending: document.querySelector("[data-admin-export-engineering-pending]"),
-    exportInventoryPending: document.querySelector("[data-admin-export-inventory-pending]"),
     exportSeafCsv: document.querySelector("[data-admin-export-seaf-csv]"),
     exportEngineeringCsv: document.querySelector("[data-admin-export-engineering-csv]"),
     exportInventoryCsv: document.querySelector("[data-admin-export-inventory-csv]"),
     exportCombinedCsv: document.querySelector("[data-admin-export-combined-csv]"),
+    exportStartDate: document.querySelector("[data-admin-export-start-date]"),
+    exportEndDate: document.querySelector("[data-admin-export-end-date]"),
     exportFeedback: document.querySelector("[data-admin-export-feedback]"),
     syncSummary: document.querySelector("[data-admin-sync-summary]"),
     syncTableBody: document.querySelector("[data-admin-sync-table-body]"),
@@ -578,12 +594,14 @@ async function bootDashboardPage() {
     duplicatesPlaceholder: document.querySelector("[data-admin-duplicates-placeholder]"),
     usersTableBody: document.querySelector("[data-admin-users-table-body]"),
     healthSummary: document.querySelector("[data-admin-health-summary]"),
+    ineligibleDialog: document.querySelector("[data-admin-ineligible-dialog]"),
+    ineligibleClose: document.querySelector("[data-admin-ineligible-close]"),
+    ineligibleList: document.querySelector("[data-admin-ineligible-list]"),
+    ineligibleDetail: document.querySelector("[data-admin-ineligible-detail]"),
   };
 
   const pageTitles = {
     overview: "Overview",
-    progress: "Progress Table",
-    search: "Search & Filter",
     "household-details": "Household Details",
     export: "Export Data",
     "sync-monitoring": "Sync Monitoring",
@@ -592,8 +610,14 @@ async function bootDashboardPage() {
     "system-health": "System Health",
   };
 
+  const getFilteredHouseholds = () => filterHouseholds(state.dashboard.households, {
+    location: elements.filterLocation?.value || "all",
+    startDate: elements.filterStartDate?.value || "",
+    endDate: elements.filterEndDate?.value || "",
+  });
+
   const getSelectedHousehold = () => {
-    const householdId = elements.detailsSelect?.value || elements.detailsSearch?.value || "";
+    const householdId = elements.detailsSelect?.value || "";
     return state.dashboard.households.find((item) => item.householdId === householdId) || null;
   };
 
@@ -602,47 +626,64 @@ async function bootDashboardPage() {
       return;
     }
 
-    elements.detailsSelect.innerHTML = `<option value="">Choose household</option>${state.dashboard.households.map((household) => `
+    const visibleHouseholds = getFilteredHouseholds();
+    elements.detailsSelect.innerHTML = `<option value="">Choose household</option>${visibleHouseholds.map((household) => `
       <option value="${escapeHtml(household.householdId)}">${escapeHtml(household.householdId)}${household.headName ? ` - ${escapeHtml(household.headName)}` : ""}</option>
     `).join("")}`;
   };
 
-  const renderSearchSection = () => {
-    const filtered = filterHouseholds(
-      state.dashboard.households,
-      elements.searchInput?.value || "",
-      elements.filterSelect?.value || "all"
-    );
-    renderHouseholdTable(elements.searchTableBody, filtered, (householdId) => {
-      window.location.hash = "#household-details";
-      if (elements.detailsSelect) {
-        elements.detailsSelect.value = householdId;
-      }
-      if (elements.detailsSearch) {
-        elements.detailsSearch.value = householdId;
-      }
-      renderDetailsPanel(elements.detailsPanel, getSelectedHousehold());
-      updateActivePage();
+  const renderIneligibleDialog = () => {
+    if (!elements.ineligibleList || !elements.ineligibleDetail) {
+      return;
+    }
+
+    const ineligibleHouseholds = Array.isArray(state.dashboard.ineligibleHouseholds)
+      ? state.dashboard.ineligibleHouseholds
+      : [];
+    if (!ineligibleHouseholds.length) {
+      elements.ineligibleList.innerHTML = `<div class="admin-placeholder">No ineligible households found.</div>`;
+      elements.ineligibleDetail.textContent = "No ineligible households found.";
+      return;
+    }
+
+    elements.ineligibleList.innerHTML = ineligibleHouseholds.map((household, index) => `
+      <button type="button" class="admin-list-button${index === 0 ? " is-active" : ""}" data-admin-ineligible-household="${escapeHtml(household.householdId)}">
+        <strong>${escapeHtml(household.householdId)}</strong>
+        <span>${escapeHtml(household.headName || household.location || "-")}</span>
+      </button>
+    `).join("");
+
+    const updateDetail = (householdId) => {
+      const household = ineligibleHouseholds.find((item) => item.householdId === householdId) || ineligibleHouseholds[0];
+      elements.ineligibleDetail.textContent = household?.ineligibleReason || "Eligibility criteria not met.";
+      elements.ineligibleList.querySelectorAll("[data-admin-ineligible-household]").forEach((button) => {
+        button.classList.toggle("is-active", button.getAttribute("data-admin-ineligible-household") === household?.householdId);
+      });
+    };
+
+    elements.ineligibleList.querySelectorAll("[data-admin-ineligible-household]").forEach((button) => {
+      button.addEventListener("click", () => {
+        updateDetail(button.getAttribute("data-admin-ineligible-household") || "");
+      });
     });
-    return filtered;
+
+    updateDetail(ineligibleHouseholds[0].householdId);
   };
 
   const renderAll = () => {
     renderSummaryCards(elements.summaryCards, state.dashboard.summary);
-    renderHouseholdTable(elements.progressTableBody, state.dashboard.households, (householdId) => {
+    const filteredHouseholds = getFilteredHouseholds();
+    renderHouseholdTable(elements.householdTableBody, filteredHouseholds, (householdId) => {
       window.location.hash = "#household-details";
       if (elements.detailsSelect) {
         elements.detailsSelect.value = householdId;
       }
-      if (elements.detailsSearch) {
-        elements.detailsSearch.value = householdId;
-      }
       renderDetailsPanel(elements.detailsPanel, getSelectedHousehold());
       updateActivePage();
     });
-    renderSearchSection();
     renderDetailsSelector();
     renderDetailsPanel(elements.detailsPanel, getSelectedHousehold());
+    renderIneligibleDialog();
     renderAdminUsers(elements.usersTableBody, state.users);
     renderSyncMonitoring(elements.syncSummary, elements.syncTableBody, elements.syncPlaceholder, state.syncMonitoring);
     renderDuplicates(elements.duplicatesTableBody, elements.duplicatesPlaceholder, state.duplicates);
@@ -667,7 +708,8 @@ async function bootDashboardPage() {
   };
 
   const updateActivePage = () => {
-    const pageId = (window.location.hash || "#overview").replace("#", "") || "overview";
+    const requestedPageId = (window.location.hash || "#overview").replace("#", "") || "overview";
+    const pageId = pageTitles[requestedPageId] ? requestedPageId : "overview";
     elements.pages.forEach((page) => {
       const isActive = page.id === pageId;
       page.hidden = !isActive;
@@ -691,7 +733,7 @@ async function bootDashboardPage() {
       apiJsonRequest(`/api/admin/health?t=${Date.now()}`, { cache: "no-store" }),
     ]);
 
-    state.dashboard = dashboard || { summary: {}, households: [] };
+    state.dashboard = dashboard || { summary: {}, households: [], ineligibleHouseholds: [] };
     state.users = users?.users || [];
     state.syncMonitoring = syncMonitoring;
     state.duplicates = duplicates;
@@ -715,7 +757,7 @@ async function bootDashboardPage() {
       await loadDashboardData();
       setFeedback(`Loaded ${state.dashboard.households.length} household${state.dashboard.households.length === 1 ? "" : "s"} from the backend.`);
     } catch (error) {
-      state.dashboard = { summary: {}, households: [] };
+      state.dashboard = { summary: {}, households: [], ineligibleHouseholds: [] };
       state.users = [];
       state.syncMonitoring = null;
       state.duplicates = null;
@@ -729,23 +771,20 @@ async function bootDashboardPage() {
     }
   };
 
-  elements.searchInput?.addEventListener("input", () => {
-    renderSearchSection();
-  });
-  elements.filterSelect?.addEventListener("change", () => {
-    renderSearchSection();
-  });
-  elements.detailsSearch?.addEventListener("input", () => {
-    const household = state.dashboard.households.find((item) => item.householdId === elements.detailsSearch.value.trim());
-    if (household && elements.detailsSelect) {
-      elements.detailsSelect.value = household.householdId;
+  const rerenderFilteredView = () => {
+    const selectedHouseholdId = elements.detailsSelect?.value || "";
+    renderDetailsSelector();
+    if (elements.detailsSelect && selectedHouseholdId) {
+      const stillVisible = getFilteredHouseholds().some((item) => item.householdId === selectedHouseholdId);
+      elements.detailsSelect.value = stillVisible ? selectedHouseholdId : "";
     }
-    renderDetailsPanel(elements.detailsPanel, household || getSelectedHousehold());
-  });
+    renderAll();
+  };
+
+  elements.filterLocation?.addEventListener("change", rerenderFilteredView);
+  elements.filterStartDate?.addEventListener("change", rerenderFilteredView);
+  elements.filterEndDate?.addEventListener("change", rerenderFilteredView);
   elements.detailsSelect?.addEventListener("change", () => {
-    if (elements.detailsSearch) {
-      elements.detailsSearch.value = elements.detailsSelect.value;
-    }
     renderDetailsPanel(elements.detailsPanel, getSelectedHousehold());
   });
   elements.refreshButton?.addEventListener("click", () => {
@@ -765,32 +804,24 @@ async function bootDashboardPage() {
     window.location.href = "index.html";
   });
 
-  const exportRows = (filename, rows) => downloadCsv(filename, rows);
-  elements.exportVisible?.addEventListener("click", () => {
-    exportRows("shehersaaz-visible-household-progress.csv", filterHouseholds(state.dashboard.households, elements.searchInput?.value || "", elements.filterSelect?.value || "all"));
-  });
-  elements.exportAll?.addEventListener("click", () => {
-    exportRows("shehersaaz-all-household-progress.csv", state.dashboard.households);
-  });
-  elements.exportIncomplete?.addEventListener("click", () => {
-    exportRows("shehersaaz-incomplete-households.csv", state.dashboard.households.filter((item) => !isFullyCompleted(item)));
-  });
-  elements.exportSeafPending?.addEventListener("click", () => {
-    exportRows("shehersaaz-seaf-pending.csv", state.dashboard.households.filter((item) => !item?.stages?.seaf?.submitted));
-  });
-  elements.exportEngineeringPending?.addEventListener("click", () => {
-    exportRows("shehersaaz-engineering-pending.csv", state.dashboard.households.filter((item) => !item?.stages?.engineering?.submitted));
-  });
-  elements.exportInventoryPending?.addEventListener("click", () => {
-    exportRows("shehersaaz-inventory-pending.csv", state.dashboard.households.filter((item) => !item?.stages?.inventory?.submitted));
-  });
+  const getExportQueryString = () => {
+    const params = new URLSearchParams();
+    if (elements.exportStartDate?.value) {
+      params.set("startDate", elements.exportStartDate.value);
+    }
+    if (elements.exportEndDate?.value) {
+      params.set("endDate", elements.exportEndDate.value);
+    }
+    const query = params.toString();
+    return query ? `?${query}` : "";
+  };
 
   const bindBackendExport = (button, path, fallbackFilename, label) => {
     button?.addEventListener("click", async () => {
       button.disabled = true;
       setExportFeedback(`${label} download is starting...`);
       try {
-        const filename = await apiDownloadRequest(path, fallbackFilename);
+        const filename = await apiDownloadRequest(`${path}${getExportQueryString()}`, fallbackFilename);
         setExportFeedback(`${label} downloaded as ${filename}.`);
       } catch (error) {
         if (error?.status === 401) {
@@ -814,6 +845,22 @@ async function bootDashboardPage() {
     "combined_assessment_export.csv",
     "Combined Assessment CSV"
   );
+
+  elements.summaryCards?.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-admin-open-ineligible-dialog]") || !elements.ineligibleDialog) {
+      return;
+    }
+    renderIneligibleDialog();
+    elements.ineligibleDialog.showModal();
+  });
+  elements.ineligibleClose?.addEventListener("click", () => {
+    elements.ineligibleDialog?.close();
+  });
+  elements.ineligibleDialog?.addEventListener("click", (event) => {
+    if (event.target === elements.ineligibleDialog) {
+      elements.ineligibleDialog.close();
+    }
+  });
 
   window.addEventListener("hashchange", updateActivePage);
   updateActivePage();

@@ -1460,6 +1460,12 @@ select {
   text-align: center;
 }
 
+.submitted-table__ineligible {
+  color: var(--text-soft);
+  text-align: center !important;
+  font-weight: 700;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;

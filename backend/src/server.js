@@ -203,6 +203,11 @@ const getExportPayload = async (snapshot, dataset) => {
   }
 };
 
+const getDateRangeFiltersFromUrl = (requestUrl) => ({
+  startDate: String(requestUrl.searchParams.get("startDate") || "").trim(),
+  endDate: String(requestUrl.searchParams.get("endDate") || "").trim(),
+});
+
 const handleApi = async (req, res, pathname) => {
   if (req.method === "OPTIONS") {
     res.writeHead(204, getResponseHeaders(req));
@@ -352,8 +357,10 @@ const handleApi = async (req, res, pathname) => {
     if (!requireAdminSession(req, res)) {
       return true;
     }
+    const requestUrl = new URL(req.url || "/", `http://${req.headers.host || `${host}:${port}`}`);
+    const filters = getDateRangeFiltersFromUrl(requestUrl);
     const dateStamp = new Date().toISOString().slice(0, 10);
-    sendCsvDownload(req, res, `seaf_export_${dateStamp}.csv`, await listTableExportRows("socio"));
+    sendCsvDownload(req, res, `seaf_export_${dateStamp}.csv`, await listTableExportRows("socio", filters));
     return true;
   }
 
@@ -361,8 +368,10 @@ const handleApi = async (req, res, pathname) => {
     if (!requireAdminSession(req, res)) {
       return true;
     }
+    const requestUrl = new URL(req.url || "/", `http://${req.headers.host || `${host}:${port}`}`);
+    const filters = getDateRangeFiltersFromUrl(requestUrl);
     const dateStamp = new Date().toISOString().slice(0, 10);
-    sendCsvDownload(req, res, `engineering_export_${dateStamp}.csv`, await listTableExportRows("engineering"));
+    sendCsvDownload(req, res, `engineering_export_${dateStamp}.csv`, await listTableExportRows("engineering", filters));
     return true;
   }
 
@@ -370,8 +379,10 @@ const handleApi = async (req, res, pathname) => {
     if (!requireAdminSession(req, res)) {
       return true;
     }
+    const requestUrl = new URL(req.url || "/", `http://${req.headers.host || `${host}:${port}`}`);
+    const filters = getDateRangeFiltersFromUrl(requestUrl);
     const dateStamp = new Date().toISOString().slice(0, 10);
-    sendCsvDownload(req, res, `inventory_export_${dateStamp}.csv`, await listTableExportRows("inventory"));
+    sendCsvDownload(req, res, `inventory_export_${dateStamp}.csv`, await listTableExportRows("inventory", filters));
     return true;
   }
 
@@ -379,12 +390,14 @@ const handleApi = async (req, res, pathname) => {
     if (!requireAdminSession(req, res)) {
       return true;
     }
+    const requestUrl = new URL(req.url || "/", `http://${req.headers.host || `${host}:${port}`}`);
+    const filters = getDateRangeFiltersFromUrl(requestUrl);
     const dateStamp = new Date().toISOString().slice(0, 10);
     sendCsvDownload(
       req,
       res,
       `combined_assessment_export_${dateStamp}.csv`,
-      await listCombinedExportRows()
+      await listCombinedExportRows(filters)
     );
     return true;
   }

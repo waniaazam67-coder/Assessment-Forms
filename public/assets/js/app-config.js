@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "2026-04-28-02";
+  const APP_VERSION = "2026-04-29-03";
   const SW_URL = `/sw.js?v=${encodeURIComponent(APP_VERSION)}`;
   let hasRegisteredServiceWorker = false;
   let isReloadingForUpdate = false;

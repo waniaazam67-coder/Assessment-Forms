@@ -18,7 +18,7 @@ const localSubmissionStatusesStorageKey = "shehersaaz-local-submission-statuses"
 const lastSuccessfulSyncStorageKey = "shehersaaz-last-successful-sync-at";
 const generatedIdsStorageKey = "shehersaaz-generated-household-ids";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
-const frontendAssetVersion = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-04-28-02";
+const frontendAssetVersion = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-04-29-03";
 const formsHomeUrl = window.__SHEHERSAAZ_APP__?.versionedPath?.("/pages/index.html") || `/pages/index.html?v=${frontendAssetVersion}`;
 const offlineStateDbName = "shehersaaz-offline-state";
 const offlineStateStoreName = "kv";
@@ -1157,17 +1157,19 @@ const buildSubmittedFormsFromHouseholds = (households = []) => {
   return submittedForms;
 };
 
-const buildPendingSubmittedFormsFromLocalState = () => {
+const buildPendingSubmittedFormsFromLocalState = async () => {
   const pendingForms = {};
   const existingSubmittedForms = readSubmittedForms();
-  const statuses = Object.values(readLocalSubmissionStatuses());
+  const queueItems = await getAllSyncQueueItems().catch(() => []);
 
-  statuses.forEach((entry) => {
+  queueItems.forEach((entry) => {
     const householdId = entry?.householdId;
     const formType = normalizeFormType(entry?.formType);
     const syncStatus = entry?.syncStatus;
+    const householdRecord = getHouseholdRecordById(householdId);
     if (
       !householdId ||
+      !isEligibleHouseholdRecord(householdRecord) ||
       !["seaf", "engineering", "inventory"].includes(formType) ||
       ![syncStatusValues.pending, syncStatusValues.syncing, syncStatusValues.failed].includes(syncStatus)
     ) {
@@ -1267,7 +1269,7 @@ const syncSharedHouseholdStateFromBackend = async () => {
     void persistOfflineStateValue("eligibleHouseholds", offlineState.eligibleHouseholds);
 
     const backendSubmittedForms = buildSubmittedFormsFromHouseholds(households);
-    const pendingLocalSubmittedForms = buildPendingSubmittedFormsFromLocalState();
+    const pendingLocalSubmittedForms = await buildPendingSubmittedFormsFromLocalState();
     const mergedSubmittedForms = mergeSubmittedFormsRecords(backendSubmittedForms, pendingLocalSubmittedForms);
     writeSubmittedForms(mergedSubmittedForms);
     syncLocalStatusesWithBackendHouseholds(households);
@@ -1443,6 +1445,15 @@ const getHouseholdRecordById = (householdId) => {
 
   const records = readHouseholdRecords();
   return records.find((record) => record?.householdId === householdId) || null;
+};
+
+const isEligibleHouseholdRecord = (record = {}) => {
+  const normalizedStatus = String(record?.eligibilityStatus || record?.status || "").trim().toLowerCase();
+  if (!normalizedStatus) {
+    return true;
+  }
+
+  return normalizedStatus !== "failed" && normalizedStatus !== "ineligible";
 };
 
 const upsertHouseholdRecord = (householdId, patch = {}, options = {}) => {
@@ -2591,6 +2602,10 @@ const populateSubmittedFormsTable = () => {
       return;
     }
 
+    if (!isEligibleHouseholdRecord(getHouseholdRecordById(householdId))) {
+      return;
+    }
+
     const existing = householdMap.get(householdId) || {
       householdId,
       headName: "-",
@@ -2618,6 +2633,8 @@ const populateSubmittedFormsTable = () => {
 
   records.forEach((household) => {
     const status = household.status || {};
+    const householdRecord = getHouseholdRecordById(household.householdId);
+    const isEligible = isEligibleHouseholdRecord(householdRecord);
     const seafSync = getLatestSubmissionStatusForItem(household.householdId, "seaf")?.syncStatus || syncStatusValues.draft;
     const engineeringSync = getLatestSubmissionStatusForItem(household.householdId, "engineering")?.syncStatus || syncStatusValues.draft;
     const inventorySync = getLatestSubmissionStatusForItem(household.householdId, "inventory")?.syncStatus || syncStatusValues.draft;
@@ -2625,13 +2642,19 @@ const populateSubmittedFormsTable = () => {
     const engineeringStatus = getUserFacingFormStatus(status.engineering || engineeringSync);
     const inventoryStatus = getUserFacingFormStatus(status.inventory || inventorySync);
     const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${household.householdId || "-"}</td>
-      <td>${household.headName || "-"}</td>
-      <td><span class="status-pill ${getUserFacingFormStatusTone(status.seaf || seafSync)}">${seafStatus}</span></td>
-      <td><span class="status-pill ${getUserFacingFormStatusTone(status.engineering || engineeringSync)}">${engineeringStatus}</span></td>
-      <td><span class="status-pill ${getUserFacingFormStatusTone(status.inventory || inventorySync)}">${inventoryStatus}</span></td>
-    `;
+    row.innerHTML = isEligible
+      ? `
+        <td>${household.householdId || "-"}</td>
+        <td>${household.headName || "-"}</td>
+        <td><span class="status-pill ${getUserFacingFormStatusTone(status.seaf || seafSync)}">${seafStatus}</span></td>
+        <td><span class="status-pill ${getUserFacingFormStatusTone(status.engineering || engineeringSync)}">${engineeringStatus}</span></td>
+        <td><span class="status-pill ${getUserFacingFormStatusTone(status.inventory || inventorySync)}">${inventoryStatus}</span></td>
+      `
+      : `
+        <td>${household.householdId || "-"}</td>
+        <td>${household.headName || "-"}</td>
+        <td colspan="3" class="submitted-table__ineligible">Household not eligible</td>
+      `;
     submittedFormsBody.append(row);
   });
 };
@@ -4608,11 +4631,17 @@ if (householdForm) {
     void persistOfflineStateValue("generatedIds", offlineState.generatedIds);
   };
 
-  const generateCodeSegment = () => {
+  const generateLetterSegment = () => {
     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     const bytes = new Uint8Array(3);
     window.crypto.getRandomValues(bytes);
     return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
+  };
+
+  const generateDigitSegment = () => {
+    const bytes = new Uint8Array(1);
+    window.crypto.getRandomValues(bytes);
+    return String(bytes[0] % 10);
   };
 
   const generateUniqueHouseholdId = () => {
@@ -4620,7 +4649,7 @@ if (householdForm) {
     let householdId = "";
 
     do {
-      householdId = `RWHU-${generateCodeSegment()}-${generateCodeSegment()}`;
+      householdId = `${generateLetterSegment()}${generateDigitSegment()}`;
     } while (existingIds.has(householdId));
 
     existingIds.add(householdId);
