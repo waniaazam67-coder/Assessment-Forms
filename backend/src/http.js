@@ -113,7 +113,7 @@ const serveStatic = (req, res, pathname, projectRoot) => {
 
   if (relativePath === "/") {
     res.writeHead(302, {
-      Location: "/pages/index.html",
+      Location: "/pages/admin-dashboard/index.html",
       ...getResponseHeaders(req),
     });
     res.end();

@@ -18,7 +18,7 @@ const localSubmissionStatusesStorageKey = "shehersaaz-local-submission-statuses"
 const lastSuccessfulSyncStorageKey = "shehersaaz-last-successful-sync-at";
 const generatedIdsStorageKey = "shehersaaz-generated-household-ids";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
-const frontendAssetVersion = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-04-28-01";
+const frontendAssetVersion = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-04-28-02";
 const formsHomeUrl = window.__SHEHERSAAZ_APP__?.versionedPath?.("/pages/index.html") || `/pages/index.html?v=${frontendAssetVersion}`;
 const offlineStateDbName = "shehersaaz-offline-state";
 const offlineStateStoreName = "kv";
@@ -1157,6 +1157,38 @@ const buildSubmittedFormsFromHouseholds = (households = []) => {
   return submittedForms;
 };
 
+const buildPendingSubmittedFormsFromLocalState = () => {
+  const pendingForms = {};
+  const existingSubmittedForms = readSubmittedForms();
+  const statuses = Object.values(readLocalSubmissionStatuses());
+
+  statuses.forEach((entry) => {
+    const householdId = entry?.householdId;
+    const formType = normalizeFormType(entry?.formType);
+    const syncStatus = entry?.syncStatus;
+    if (
+      !householdId ||
+      !["seaf", "engineering", "inventory"].includes(formType) ||
+      ![syncStatusValues.pending, syncStatusValues.syncing, syncStatusValues.failed].includes(syncStatus)
+    ) {
+      return;
+    }
+
+    const existing = pendingForms[householdId] || existingSubmittedForms[householdId] || {};
+    pendingForms[householdId] = {
+      headName: existing.headName || "",
+      household: existing.household || "Submitted",
+      seaf: existing.seaf || "Pending",
+      engineering: existing.engineering || "Pending",
+      inventory: existing.inventory || "Pending",
+      updatedAt: existing.updatedAt || entry.updatedAt || entry.createdAt || new Date().toISOString(),
+      [formType]: "Submitted",
+    };
+  });
+
+  return pendingForms;
+};
+
 const syncLocalStatusesWithBackendHouseholds = (households = []) => {
   if (!Array.isArray(households) || households.length === 0) {
     return false;
@@ -1235,7 +1267,8 @@ const syncSharedHouseholdStateFromBackend = async () => {
     void persistOfflineStateValue("eligibleHouseholds", offlineState.eligibleHouseholds);
 
     const backendSubmittedForms = buildSubmittedFormsFromHouseholds(households);
-    const mergedSubmittedForms = mergeSubmittedFormsRecords(readSubmittedForms(), backendSubmittedForms);
+    const pendingLocalSubmittedForms = buildPendingSubmittedFormsFromLocalState();
+    const mergedSubmittedForms = mergeSubmittedFormsRecords(backendSubmittedForms, pendingLocalSubmittedForms);
     writeSubmittedForms(mergedSubmittedForms);
     syncLocalStatusesWithBackendHouseholds(households);
 

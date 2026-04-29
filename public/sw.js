@@ -5,7 +5,12 @@ const PRECACHE_URLS = [
   "/",
   `/index.html?v=${APP_VERSION}`,
   `/pages/index.html?v=${APP_VERSION}`,
+  `/pages/household-information.html?v=${APP_VERSION}`,
+  `/pages/socioeconomic-assessment.html?v=${APP_VERSION}`,
+  `/pages/engineering-assessment.html?v=${APP_VERSION}`,
+  `/pages/inventory.html?v=${APP_VERSION}`,
   `/pages/admin-dashboard/index.html?v=${APP_VERSION}`,
+  `/pages/admin-dashboard/dashboard.html?v=${APP_VERSION}`,
   `/assets/js/app-config.js?v=${APP_VERSION}`,
   `/assets/js/forms.js?v=${APP_VERSION}`,
   `/assets/js/admin.js?v=${APP_VERSION}`,
@@ -79,6 +84,7 @@ const networkOnlyApi = async (request) => {
 
 const networkFirstHtml = async (request) => {
   const cache = await caches.open(CACHE_NAME);
+  const requestUrl = new URL(request.url);
 
   try {
     const response = await fetch(request, { cache: "no-store" });
@@ -90,7 +96,12 @@ const networkFirstHtml = async (request) => {
       return cachedResponse;
     }
 
-    const fallbackResponse = await cache.match(`/pages/admin-dashboard/index.html?v=${APP_VERSION}`, { ignoreSearch: true });
+    const fallbackPath = requestUrl.pathname.startsWith("/pages/admin-dashboard/")
+      ? `/pages/admin-dashboard/index.html?v=${APP_VERSION}`
+      : requestUrl.pathname.startsWith("/pages/")
+        ? `/pages/index.html?v=${APP_VERSION}`
+        : `/index.html?v=${APP_VERSION}`;
+    const fallbackResponse = await cache.match(fallbackPath, { ignoreSearch: true });
     if (fallbackResponse) {
       return fallbackResponse;
     }
