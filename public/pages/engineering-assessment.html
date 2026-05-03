@@ -43,8 +43,8 @@
             </label>
 
             <label class="field field-span-1">
-              <span>Engineer Name</span>
-              <select data-engineer-select>
+              <span>Engineer Name<span class="required">*</span></span>
+              <select data-engineer-select required>
                 <option value="" selected disabled hidden>Select engineer</option>
               </select>
             </label>
@@ -58,13 +58,13 @@
 
           <div class="assessment-grid engineering-mini-grid">
             <label class="field field-span-1">
-              <span>Width (in ft)</span>
-              <input type="number" min="0" step="0.01" placeholder="W" data-housing-width>
+              <span>Width (in ft)<span class="required">*</span></span>
+              <input type="number" min="0" step="0.01" placeholder="W" data-housing-width required>
             </label>
 
             <label class="field field-span-1">
-              <span>Depth (in ft)</span>
-              <input type="number" min="0" step="0.01" placeholder="D" data-housing-depth>
+              <span>Depth (in ft)<span class="required">*</span></span>
+              <input type="number" min="0" step="0.01" placeholder="D" data-housing-depth required>
             </label>
 
             <label class="field field-span-1">
@@ -76,7 +76,7 @@
           <div class="section-header section-header-compact engineering-block-title">
             <h3>Question 2. Construction material used for roof</h3>
           </div>
-          <div class="checkbox-stack">
+          <div class="checkbox-stack" data-required-checkbox-group="Construction material used for roof">
             <label class="checkbox-card"><input type="checkbox" name="roof-material" value="RCC slab(Lanter)"> RCC slab(Lanter)</label>
             <label class="checkbox-card"><input type="checkbox" name="roof-material" value="Prefabricated RCC slabs, T-iron and girder beams"> Prefabricated RCC slabs, T-iron and girder beams</label>
             <label class="checkbox-card"><input type="checkbox" name="roof-material" value="Clay bricks/tiles, T-iron and grinder beams"> Clay bricks/tiles, T-iron and grinder beams</label>
@@ -84,14 +84,14 @@
           </div>
 
           <label class="field engineering-other-field" data-toggle-field="roof-other" hidden>
-            <span>Please specify other roof material</span>
+            <span>Please specify other roof material<span class="required">*</span></span>
             <input type="text" placeholder="Enter other roof material">
           </label>
 
           <div class="section-header section-header-compact engineering-block-title">
             <h3>Question 3. Arrangement of Rainwater Drainage</h3>
           </div>
-          <div class="checkbox-stack">
+          <div class="checkbox-stack" data-required-checkbox-group="Arrangement of Rainwater Drainage">
             <label class="checkbox-card"><input type="checkbox" name="drainage-arrangement" value="Rainwater from rooftop, balconies, terraces and shades is drained separately and NOT drained into sewerage system."> Rainwater from rooftop, balconies, terraces and shades is drained separately and NOT drained into sewerage system.</label>
             <label class="checkbox-card"><input type="checkbox" name="drainage-arrangement" value="Rainwater is NOT drained separately and is drained into sewerage system"> Rainwater is NOT drained separately and is drained into sewerage system</label>
             <label class="checkbox-card"><input type="checkbox" name="drainage-arrangement" value="Other arrangement" data-toggle-target="drainage-other"> Other arrangement</label>
@@ -100,7 +100,7 @@
           </div>
 
           <label class="field engineering-other-field" data-toggle-field="drainage-other" hidden>
-            <span>Please specify other arrangement</span>
+            <span>Please specify other arrangement<span class="required">*</span></span>
             <input type="text" placeholder="Enter other arrangement">
           </label>
 
@@ -221,16 +221,16 @@
           </div>
 
           <div class="assessment-grid tank-availability-grid">
-            <div class="field-group field-span-1">
-              <span>Overhead Tank</span>
+            <div class="field-group field-span-1 field-group-radio" data-required-radio-group="Overhead Tank">
+              <span>Overhead Tank<span class="required">*</span></span>
               <div class="checkbox-grid checkbox-grid--stacked tank-availability-options">
                 <label class="checkbox-card"><input type="radio" name="overhead-tank-availability" value="Yes" data-tank-availability="overhead"> Yes</label>
                 <label class="checkbox-card"><input type="radio" name="overhead-tank-availability" value="No" data-tank-availability="overhead"> No</label>
               </div>
             </div>
 
-            <div class="field-group field-span-1">
-              <span>Underground Tank</span>
+            <div class="field-group field-span-1 field-group-radio" data-required-radio-group="Underground Tank">
+              <span>Underground Tank<span class="required">*</span></span>
               <div class="checkbox-grid checkbox-grid--stacked tank-availability-options">
                 <label class="checkbox-card"><input type="radio" name="underground-tank-availability" value="Yes" data-tank-availability="underground"> Yes</label>
                 <label class="checkbox-card"><input type="radio" name="underground-tank-availability" value="No" data-tank-availability="underground"> No</label>
@@ -246,12 +246,12 @@
 
             <div class="assessment-grid">
               <label class="field field-span-1">
-                <span>Number of underground tanks</span>
+                <span>Number of underground tanks<span class="required">*</span></span>
                 <input type="number" min="0" step="1" data-tank-count="underground">
               </label>
 
               <label class="field field-span-1">
-                <span>Material used in underground tanks</span>
+                <span>Material used in underground tanks<span class="required">*</span></span>
                 <input type="text" placeholder="Enter material used" data-tank-material="underground">
               </label>
 
@@ -289,12 +289,12 @@
 
             <div class="assessment-grid">
               <label class="field field-span-1">
-                <span>Number of overhead tanks</span>
+                <span>Number of overhead tanks<span class="required">*</span></span>
                 <input type="number" min="0" step="1" data-tank-count="overhead">
               </label>
 
               <label class="field field-span-1">
-                <span>Material used in overhead tanks</span>
+                <span>Material used in overhead tanks<span class="required">*</span></span>
                 <input type="text" placeholder="Enter material used" data-tank-material="overhead">
               </label>
 
@@ -330,8 +330,8 @@
           </div>
 
           <label class="field engineering-block">
-            <span>Proposed storage capacity of tanks</span>
-            <select data-proposed-storage-capacity>
+            <span>Proposed storage capacity of tanks<span class="required">*</span></span>
+            <select data-proposed-storage-capacity required>
               <option value="" selected disabled hidden>Select capacity</option>
               <option>800 liters</option>
               <option>1000 liters</option>
@@ -347,8 +347,8 @@
           </div>
 
           <label class="field engineering-block">
-            <span>Reasons for rejection</span>
-            <textarea rows="6" placeholder="Write the reasons for rejection here"></textarea>
+            <span>Reasons for rejection<span class="required">*</span></span>
+            <textarea rows="6" placeholder="Write the reasons for rejection here" required></textarea>
           </label>
 
           <div class="section-header section-header-compact engineering-block-title">

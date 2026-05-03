@@ -697,6 +697,19 @@ select {
   color: #d75d5d;
 }
 
+.field-group.field-error > span,
+.field-group.field-error .required {
+  color: #d75d5d;
+}
+
+.checkbox-grid.field-error,
+.checkbox-stack.field-error {
+  padding: 12px;
+  border: 1px solid #ef7777;
+  border-radius: var(--radius-field);
+  box-shadow: 0 0 0 4px rgba(239, 119, 119, 0.12);
+}
+
 .field input[type="file"] {
   padding: 11px 12px;
   background: #f6f8fb;

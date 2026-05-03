@@ -3606,8 +3606,50 @@ if (socioeconomicForm) {
   const addPersonButton = document.querySelector("[data-add-person]");
   const addUtilityButton = document.querySelector("[data-add-utility]");
   const addFacilityButton = document.querySelector("[data-add-facility]");
+  const socioRequiredCheckboxGroups = Array.from(socioeconomicForm.querySelectorAll("[data-required-checkbox-group]"));
 
   const socioStepOrder = ["housing", "demographics", "utilities", "urban", "flooding"];
+
+  const clearSocioFieldError = (element) => {
+    element?.classList.remove("field-error");
+  };
+
+  const markSocioFieldError = (element) => {
+    element?.classList.add("field-error");
+  };
+
+  const validateSocioPanel = (panel) => {
+    const invalidElements = [];
+    const requiredFields = Array.from(panel.querySelectorAll(".field")).filter((field) => {
+      if (field.closest("[hidden]")) {
+        return false;
+      }
+
+      return Boolean(field.querySelector("input[required], select[required], textarea[required]"));
+    });
+
+    requiredFields.forEach((field) => {
+      clearSocioFieldError(field);
+      const input = field.querySelector("input[required], select[required], textarea[required]");
+      if (input && !input.checkValidity()) {
+        markSocioFieldError(field);
+        invalidElements.push(field);
+      }
+    });
+
+    socioRequiredCheckboxGroups
+      .filter((group) => panel.contains(group) && !group.closest("[hidden]"))
+      .forEach((group) => {
+        clearSocioFieldError(group);
+        const checked = group.querySelector("input[type='checkbox']:checked");
+        if (!checked) {
+          markSocioFieldError(group);
+          invalidElements.push(group);
+        }
+      });
+
+    return invalidElements;
+  };
 
   const saveSeafResponse = () => {
     const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
@@ -3710,8 +3752,50 @@ if (socioeconomicForm) {
 
   socioTabs.forEach((tab) => {
     tab.addEventListener("click", () => {
+      const activePanel = socioPanels.find((panel) => panel.classList.contains("is-active"));
+      const currentStep = activePanel?.dataset.socioPanel || socioStepOrder[0];
+      const targetStep = tab.dataset.socioTab;
+      const currentIndex = socioStepOrder.indexOf(currentStep);
+      const targetIndex = socioStepOrder.indexOf(targetStep);
+
+      if (targetIndex > currentIndex && activePanel) {
+        const invalidElements = validateSocioPanel(activePanel);
+        if (invalidElements.length > 0) {
+          const firstInput = invalidElements[0].querySelector("input, select, textarea");
+          if (firstInput) {
+            firstInput.focus();
+          }
+          showFloatingMessage("Please fill in all required questions before continuing.");
+          return;
+        }
+      }
+
       setActiveSocioStep(tab.dataset.socioTab);
     });
+  });
+
+  socioeconomicForm.addEventListener("input", (event) => {
+    const field = event.target.closest(".field");
+    if (field) {
+      clearSocioFieldError(field);
+    }
+
+    const checkboxGroup = event.target.closest("[data-required-checkbox-group]");
+    if (checkboxGroup) {
+      clearSocioFieldError(checkboxGroup);
+    }
+  });
+
+  socioeconomicForm.addEventListener("change", (event) => {
+    const field = event.target.closest(".field");
+    if (field) {
+      clearSocioFieldError(field);
+    }
+
+    const checkboxGroup = event.target.closest("[data-required-checkbox-group]");
+    if (checkboxGroup) {
+      clearSocioFieldError(checkboxGroup);
+    }
   });
 
   if (addPersonButton) {
@@ -3774,6 +3858,16 @@ if (socioeconomicForm) {
       const currentStep = activePanel ? activePanel.dataset.socioPanel : socioStepOrder[0];
       const currentIndex = socioStepOrder.indexOf(currentStep);
       const nextStep = socioStepOrder[currentIndex + 1];
+
+      const invalidElements = activePanel ? validateSocioPanel(activePanel) : [];
+      if (invalidElements.length > 0) {
+        const firstInput = invalidElements[0].querySelector("input, select, textarea");
+        if (firstInput) {
+          firstInput.focus();
+        }
+        showFloatingMessage("Please fill in all required questions before continuing.");
+        return;
+      }
 
       if (nextStep) {
         setActiveSocioStep(nextStep);
@@ -3844,6 +3938,16 @@ if (engineeringForm) {
   const waterNeedHouseholdSizeInput = engineeringForm.querySelector("[data-water-need-household-size]");
   const waterNeedDailyInput = engineeringForm.querySelector("[data-water-need-daily]");
   const waterNeedStorageInput = engineeringForm.querySelector("[data-water-need-storage]");
+  const engineeringRequiredCheckboxGroups = Array.from(engineeringForm.querySelectorAll("[data-required-checkbox-group]"));
+  const engineeringRequiredRadioGroups = Array.from(engineeringForm.querySelectorAll("[data-required-radio-group]"));
+
+  const clearEngineeringFieldError = (element) => {
+    element?.classList.remove("field-error");
+  };
+
+  const markEngineeringFieldError = (element) => {
+    element?.classList.add("field-error");
+  };
 
   const setSelectValue = (select, value) => {
     if (!select || !value) {
@@ -3879,6 +3983,88 @@ if (engineeringForm) {
     }
   };
 
+  const syncEngineeringConditionalRequirements = () => {
+    toggleCheckboxes.forEach((checkbox) => {
+      const targetName = checkbox.dataset.toggleTarget;
+      const targetField = targetName ? engineeringForm.querySelector(`[data-toggle-field='${targetName}']`) : null;
+      const targetInput = targetField?.querySelector("input");
+      if (targetInput) {
+        targetInput.required = checkbox.checked;
+      }
+    });
+
+    ["underground", "overhead"].forEach((tankType) => {
+      const enabled = getTankAvailabilityValue(tankType) === "Yes";
+      const countInput = engineeringForm.querySelector(`[data-tank-count='${tankType}']`);
+      const materialInput = engineeringForm.querySelector(`[data-tank-material='${tankType}']`);
+
+      if (countInput) {
+        countInput.required = enabled;
+      }
+
+      if (materialInput) {
+        materialInput.required = enabled;
+      }
+    });
+  };
+
+  const validateEngineeringForm = () => {
+    const invalidElements = [];
+    const requiredFields = Array.from(engineeringForm.querySelectorAll(".field")).filter((field) => {
+      if (field.closest("[hidden]")) {
+        return false;
+      }
+
+      const input = field.querySelector("input[required], select[required], textarea[required]");
+      return Boolean(input) && !input.disabled;
+    });
+
+    requiredFields.forEach((field) => {
+      clearEngineeringFieldError(field);
+      const input = field.querySelector("input[required], select[required], textarea[required]");
+      if (input && !input.checkValidity()) {
+        markEngineeringFieldError(field);
+        invalidElements.push(field);
+      }
+    });
+
+    engineeringRequiredCheckboxGroups.forEach((group) => {
+      if (group.closest("[hidden]")) {
+        return;
+      }
+
+      clearEngineeringFieldError(group);
+      const checked = group.querySelector("input[type='checkbox']:checked");
+      if (!checked) {
+        markEngineeringFieldError(group);
+        invalidElements.push(group);
+      }
+    });
+
+    engineeringRequiredRadioGroups.forEach((group) => {
+      if (group.closest("[hidden]")) {
+        return;
+      }
+
+      clearEngineeringFieldError(group);
+      const optionsContainer = group.querySelector(".tank-availability-options");
+      if (optionsContainer) {
+        clearEngineeringFieldError(optionsContainer);
+      }
+
+      const checked = group.querySelector("input[type='radio']:checked");
+      if (!checked) {
+        markEngineeringFieldError(group);
+        if (optionsContainer) {
+          markEngineeringFieldError(optionsContainer);
+        }
+        invalidElements.push(group);
+      }
+    });
+
+    return invalidElements;
+  };
+
   const syncHousingStructureArea = () => {
     if (!housingWidthInput || !housingDepthInput || !housingAreaInput) {
       return;
@@ -3899,6 +4085,7 @@ if (engineeringForm) {
   toggleCheckboxes.forEach((checkbox) => {
     checkbox.addEventListener("change", () => {
       syncToggleField(checkbox);
+      syncEngineeringConditionalRequirements();
     });
     syncToggleField(checkbox);
   });
@@ -4270,6 +4457,7 @@ if (engineeringForm) {
     tankAvailabilityInputs.forEach((input) => {
       input.addEventListener("change", () => {
         syncTankSectionsFromEngineeringSelection();
+        syncEngineeringConditionalRequirements();
       });
     });
 
@@ -4278,6 +4466,25 @@ if (engineeringForm) {
     }
 
     engineeringForm.addEventListener("input", (event) => {
+      const field = event.target.closest(".field");
+      if (field) {
+        clearEngineeringFieldError(field);
+      }
+
+      const checkboxGroup = event.target.closest("[data-required-checkbox-group]");
+      if (checkboxGroup) {
+        clearEngineeringFieldError(checkboxGroup);
+      }
+
+      const radioGroup = event.target.closest("[data-required-radio-group]");
+      if (radioGroup) {
+        clearEngineeringFieldError(radioGroup);
+        const optionsContainer = radioGroup.querySelector(".tank-availability-options");
+        if (optionsContainer) {
+          clearEngineeringFieldError(optionsContainer);
+        }
+      }
+
       const row = event.target.closest("[data-generated-tank-row]");
       if (!row) {
         return;
@@ -4287,12 +4494,8 @@ if (engineeringForm) {
     syncTankRow(row, tankType);
     });
 
-    ["underground", "overhead"].forEach((tankType) => {
-      if (!getTankAvailabilityValue(tankType)) {
-        setTankAvailabilityValue(tankType, "No");
-      }
-    });
     syncTankSectionsFromEngineeringSelection();
+    syncEngineeringConditionalRequirements();
     syncHousingStructureArea();
     syncEngineerOptions();
     syncWaterNeedCalculations();
@@ -4300,6 +4503,20 @@ if (engineeringForm) {
 
   if (engineeringSubmitButton) {
     engineeringSubmitButton.addEventListener("click", async () => {
+      const invalidElements = validateEngineeringForm();
+      if (invalidElements.length > 0) {
+        if (engineeringFeedback) {
+          engineeringFeedback.textContent = "Please fill in all required questions before submitting.";
+          engineeringFeedback.classList.add("form-feedback-error");
+          engineeringFeedback.classList.remove("form-feedback-success");
+        }
+        const firstInput = invalidElements[0].querySelector("input, select, textarea");
+        if (firstInput) {
+          firstInput.focus();
+        }
+        return;
+      }
+
       if (!hasAtLeastOneCatchmentRow()) {
         if (engineeringFeedback) {
           engineeringFeedback.textContent = "Please fill at least one catchment area row before submitting the engineering form.";

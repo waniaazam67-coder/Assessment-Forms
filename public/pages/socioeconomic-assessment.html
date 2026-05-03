@@ -52,25 +52,25 @@
               </label>
 
               <label class="field field-span-1">
-                <span>1.1 How many households live in this dwelling?</span>
-                <input type="number" min="1">
+                <span>1.1 How many households live in this dwelling?<span class="required">*</span></span>
+                <input type="number" min="1" required>
               </label>
 
               <div class="field-group field-span-2">
-                <span>1.2 Number of floors and rooms</span>
+                <span>1.2 Number of floors and rooms<span class="required">*</span></span>
                 <div class="field-cluster">
                   <label class="field compact field-subitem">
-                    <input type="number" min="0" placeholder="Number of floors">
+                    <input type="number" min="0" placeholder="Number of floors" required>
                   </label>
                   <label class="field compact field-subitem">
-                    <input type="number" min="0" placeholder="Number of rooms">
+                    <input type="number" min="0" placeholder="Number of rooms" required>
                   </label>
                 </div>
               </div>
 
               <label class="field field-span-1">
-                <span>1.3 Source of Electricity</span>
-                <select>
+                <span>1.3 Source of Electricity<span class="required">*</span></span>
+                <select required>
                   <option value="" selected disabled hidden>Select source</option>
                   <option>Electricity Meter</option>
                   <option>Off grid solar</option>
@@ -81,8 +81,8 @@
               </label>
 
               <label class="field field-span-1">
-                <span>1.4 Fuel used for cooking and heating</span>
-                <select>
+                <span>1.4 Fuel used for cooking and heating<span class="required">*</span></span>
+                <select required>
                   <option value="" selected disabled hidden>Select fuel</option>
                   <option>Natural Gas</option>
                   <option>LPG</option>
@@ -95,10 +95,10 @@
               </label>
 
               <div class="field-group field-span-2">
-                <span>1.5 Type of housing structure and roof</span>
+                <span>1.5 Type of housing structure and roof<span class="required">*</span></span>
                 <div class="field-cluster">
                   <label class="field compact field-subitem">
-                    <select aria-label="Housing structure">
+                    <select aria-label="Housing structure" required>
                       <option value="" selected disabled hidden>Housing structure</option>
                       <option>Katcha</option>
                       <option>Pacca</option>
@@ -106,7 +106,7 @@
                     </select>
                   </label>
                   <label class="field compact field-subitem">
-                    <select aria-label="Roof type">
+                    <select aria-label="Roof type" required>
                       <option value="" selected disabled hidden>Roof type</option>
                       <option>Katcha</option>
                       <option>Pacca</option>
@@ -134,8 +134,8 @@
               <article class="repeatable-card">
                 <div class="assessment-grid repeatable-grid">
                   <label class="field field-span-1">
-                    <span>Gender</span>
-                    <select>
+                    <span>Gender<span class="required">*</span></span>
+                    <select required>
                       <option value="" selected disabled hidden>Select gender</option>
                       <option>Man</option>
                       <option>Woman</option>
@@ -143,8 +143,8 @@
                   </label>
 
                   <label class="field field-span-1">
-                    <span>Literacy level</span>
-                    <select>
+                    <span>Literacy level<span class="required">*</span></span>
+                    <select required>
                       <option value="" selected disabled hidden>Select literacy level</option>
                       <option>Illiterate</option>
                       <option>Primary</option>
@@ -161,8 +161,8 @@
                   </label>
 
                   <label class="field field-span-1">
-                    <span>Employment status</span>
-                    <select>
+                    <span>Employment status<span class="required">*</span></span>
+                    <select required>
                       <option value="" selected disabled hidden>Select employment status</option>
                       <option>Employed</option>
                       <option>Unemployed</option>
@@ -180,18 +180,18 @@
             </div>
 
             <div class="section-header section-header-compact">
-              <h3>3.1 Basic Utilities</h3>
+              <h3>3.1 Basic Utilities<span class="required">*</span></h3>
             </div>
-            <div class="checkbox-grid checkbox-grid--stacked">
+            <div class="checkbox-grid checkbox-grid--stacked" data-required-checkbox-group="Basic Utilities">
               <label class="checkbox-card"><input type="checkbox" value="Landline"> Landline</label>
               <label class="checkbox-card"><input type="checkbox" value="Electricity"> Electricity</label>
               <label class="checkbox-card"><input type="checkbox" value="Natural Gas"> Natural Gas</label>
             </div>
 
             <div class="section-header section-header-compact">
-              <h3>3.2 Facilities inside house</h3>
+              <h3>3.2 Facilities inside house<span class="required">*</span></h3>
             </div>
-            <div class="checkbox-grid checkbox-grid--stacked" data-facility-list>
+            <div class="checkbox-grid checkbox-grid--stacked" data-facility-list data-required-checkbox-group="Facilities inside house">
               <label class="checkbox-card"><input type="checkbox" value="Toilet"> Toilet</label>
               <label class="checkbox-card"><input type="checkbox" value="Kitchen"> Kitchen</label>
               <label class="checkbox-card"><input type="checkbox" value="Overhead tank"> Overhead tank</label>
@@ -202,9 +202,9 @@
             </div>
 
             <div class="section-header section-header-compact">
-              <h3>3.3 Source, quality and quantity of water</h3>
+              <h3>3.3 Source, quality and quantity of water<span class="required">*</span></h3>
             </div>
-            <div class="checkbox-grid checkbox-grid--stacked">
+            <div class="checkbox-grid checkbox-grid--stacked" data-required-checkbox-group="Source, quality and quantity of water">
               <label class="checkbox-card"><input type="checkbox" value="Municipal water supply"> Source of water inside house: Municipal water supply</label>
               <label class="checkbox-card"><input type="checkbox" value="Hand pump"> Source of water inside house: Hand pump</label>
               <label class="checkbox-card"><input type="checkbox" value="Borehole"> Source of water inside house: Borehole</label>
@@ -225,8 +225,8 @@
 
             <div class="assessment-grid">
               <label class="field field-span-1">
-                <span>Quantity of water</span>
-                <select>
+                <span>Quantity of water<span class="required">*</span></span>
+                <select required>
                   <option value="" selected disabled hidden>Select quantity</option>
                   <option>Not sufficient</option>
                   <option>Sufficient</option>
@@ -235,8 +235,8 @@
               </label>
 
               <label class="field field-span-1">
-                <span>Quality of water</span>
-                <select>
+                <span>Quality of water<span class="required">*</span></span>
+                <select required>
                   <option value="" selected disabled hidden>Select quality</option>
                   <option>Poor</option>
                   <option>Fair</option>
@@ -255,9 +255,9 @@
             </div>
 
             <div class="section-header section-header-compact">
-              <h3>4.1 Are there trees or plants in the street?</h3>
+              <h3>4.1 Are there trees or plants in the street?<span class="required">*</span></h3>
             </div>
-            <div class="checkbox-grid">
+            <div class="checkbox-grid" data-required-checkbox-group="Trees or plants in the street">
               <label class="checkbox-card"><input type="checkbox"> No trees in the street</label>
               <label class="checkbox-card"><input type="checkbox"> No plants in the street</label>
               <label class="checkbox-card"><input type="checkbox"> There are trees in the street</label>
@@ -269,9 +269,9 @@
             </div>
 
             <div class="section-header section-header-compact">
-              <h3>4.2 Kitchen, front or backyard, or rooftop gardening</h3>
+              <h3>4.2 Kitchen, front or backyard, or rooftop gardening<span class="required">*</span></h3>
             </div>
-            <div class="checkbox-grid">
+            <div class="checkbox-grid" data-required-checkbox-group="Kitchen, front or backyard, or rooftop gardening">
               <label class="checkbox-card"><input type="checkbox"> No tree/s in the house</label>
               <label class="checkbox-card"><input type="checkbox"> No plants in the house</label>
               <label class="checkbox-card"><input type="checkbox"> There are flower plants in the house</label>
@@ -291,8 +291,8 @@
 
             <div class="assessment-grid">
               <label class="field field-span-1">
-                <span>5.1 Has the house/dwelling ever been affected by flooding?</span>
-                <select>
+                <span>5.1 Has the house/dwelling ever been affected by flooding?<span class="required">*</span></span>
+                <select required>
                   <option value="" selected disabled hidden>Select option</option>
                   <option>Yes</option>
                   <option>No</option>
@@ -319,8 +319,8 @@
       </div>
       <div class="assessment-grid repeatable-grid">
         <label class="field field-span-1">
-          <span>Gender</span>
-          <select>
+          <span>Gender<span class="required">*</span></span>
+          <select required>
             <option value="" selected disabled hidden>Select gender</option>
             <option>Man</option>
             <option>Woman</option>
@@ -328,8 +328,8 @@
         </label>
 
         <label class="field field-span-1">
-          <span>Literacy level</span>
-          <select>
+          <span>Literacy level<span class="required">*</span></span>
+          <select required>
             <option value="" selected disabled hidden>Select literacy level</option>
             <option>Illiterate</option>
             <option>Primary</option>
@@ -346,8 +346,8 @@
         </label>
 
         <label class="field field-span-1">
-          <span>Employment status</span>
-          <select>
+          <span>Employment status<span class="required">*</span></span>
+          <select required>
             <option value="" selected disabled hidden>Select employment status</option>
             <option>Employed</option>
             <option>Unemployed</option>
