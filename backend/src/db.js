@@ -1825,6 +1825,16 @@ const submitForm = async ({
     const rowData = getRowDataForForm(formKey, mergedPayload, householdPatch);
 
     await upsertDynamicRow(connection, tableName, householdId, rowData, mergedPayload, householdPatch);
+    if (formKey !== "household" && householdPatch && Object.keys(householdPatch).length > 0) {
+      const householdMirrorPatch = {
+        catchmentTotalArea: householdPatch.catchmentTotalArea || householdPatch.engineeringCatchmentTotalArea || householdPatch.engineeringCatchmentArea || "",
+        engineeringCatchmentArea: householdPatch.engineeringCatchmentArea || householdPatch.catchmentTotalArea || householdPatch.engineeringCatchmentTotalArea || "",
+        engineeringCatchmentTotalArea: householdPatch.engineeringCatchmentTotalArea || householdPatch.catchmentTotalArea || householdPatch.engineeringCatchmentArea || "",
+      };
+      const householdPayload = getPayloadForForm("household", householdMirrorPatch, householdMirrorPatch);
+      const householdRowData = getRowDataForForm("household", householdPayload, householdPatch);
+      await upsertDynamicRow(connection, tableNames.household, householdId, householdRowData, householdPayload, householdPatch);
+    }
     const nextStatus = await upsertStatusRow(
       connection,
       householdId,

@@ -2345,6 +2345,34 @@ const getEngineeringCatchmentAreaForHousehold = (householdId) => {
   return getEngineeringAreaFromSource(record);
 };
 
+const cacheEngineeringCatchmentArea = (householdId, catchmentArea) => {
+  if (!householdId) {
+    return;
+  }
+
+  const numericArea = Number.parseFloat(String(catchmentArea || "").replace(/,/g, "").replace(/[^\d.-]/g, ""));
+  if (!Number.isFinite(numericArea) || numericArea <= 0) {
+    return;
+  }
+
+  const formattedArea = String(numericArea);
+  cacheHouseholdRecord(householdId, {
+    engineeringCatchmentArea: formattedArea,
+    engineeringCatchmentTotalArea: formattedArea,
+    catchmentTotalArea: formattedArea,
+  });
+
+  const selectedHousehold = readSelectedHousehold();
+  if (selectedHousehold?.householdId === householdId) {
+    writeSelectedHousehold({
+      ...selectedHousehold,
+      engineeringCatchmentArea: formattedArea,
+      engineeringCatchmentTotalArea: formattedArea,
+      catchmentTotalArea: formattedArea,
+    });
+  }
+};
+
 const resolveEngineeringCatchmentArea = async (householdId) => {
   if (!householdId) {
     return 0;
@@ -2355,19 +2383,26 @@ const resolveEngineeringCatchmentArea = async (householdId) => {
     return cachedArea;
   }
 
+  const selectedHousehold = readSelectedHousehold();
+  if (selectedHousehold?.householdId === householdId) {
+    const selectedArea = getEngineeringAreaFromSource(selectedHousehold);
+    if (selectedArea > 0) {
+      cacheEngineeringCatchmentArea(householdId, selectedArea);
+      return selectedArea;
+    }
+  }
+
   const householdRecord = await hydrateHouseholdRecordFromBackend(householdId);
   const backendArea = getEngineeringAreaFromSource(householdRecord);
   if (backendArea > 0) {
+    cacheEngineeringCatchmentArea(householdId, backendArea);
     return backendArea;
   }
 
   const engineeringSubmission = await getFormSubmissionFromBackend("engineering", householdId);
   const submissionArea = getEngineeringAreaFromSource(engineeringSubmission);
   if (submissionArea > 0) {
-    cacheHouseholdRecord(householdId, {
-      engineeringCatchmentArea: engineeringSubmission?.engineeringCatchmentArea || engineeringSubmission?.catchmentTotalArea || String(submissionArea),
-      engineeringCatchmentTotalArea: engineeringSubmission?.engineeringCatchmentTotalArea || engineeringSubmission?.catchmentTotalArea || String(submissionArea),
-    });
+    cacheEngineeringCatchmentArea(householdId, submissionArea);
     return submissionArea;
   }
 
@@ -4362,9 +4397,7 @@ if (engineeringForm) {
 
     if (Number.isFinite(depth) && Number.isFinite(width) && Number.isFinite(length)) {
       const rawCapacity = depth * width * length;
-      capacityInput.value = tankType === "overhead"
-        ? (rawCapacity * 28.32).toFixed(2)
-        : rawCapacity.toFixed(2);
+      capacityInput.value = (rawCapacity * 28.32).toFixed(2);
     } else {
       capacityInput.value = "";
     }
@@ -4739,25 +4772,28 @@ if (engineeringForm) {
         syncResult = await setSubmittedFormStatus(householdId, "engineering", "Submitted", {
           payload: engineeringPayload,
           householdPatch: {
-            engineerName,
-            housingWidth: engineeringPayload.housingWidth,
-            housingDepth: engineeringPayload.housingDepth,
-            housingArea: engineeringPayload.housingArea,
-            catchmentRows: engineeringPayload.catchmentRows,
-            engineeringCatchmentArea: catchmentTotalArea,
-            engineeringCatchmentTotalArea: catchmentTotalArea,
-            waterNeedArea: engineeringPayload.waterNeedArea,
-            waterNeedSpace: engineeringPayload.waterNeedSpace,
-            waterNeedQuantity: engineeringPayload.waterNeedQuantity,
-            waterNeedHouseholdSize: engineeringPayload.waterNeedHouseholdSize,
-            waterNeedDaily: engineeringPayload.waterNeedDaily,
-            engineeringTankSpace: engineeringPayload.engineeringTankSpace,
-            proposedStorageCapacity: engineeringPayload.proposedStorageCapacity,
+          engineerName,
+          housingWidth: engineeringPayload.housingWidth,
+          housingDepth: engineeringPayload.housingDepth,
+          housingArea: engineeringPayload.housingArea,
+          catchmentRows: engineeringPayload.catchmentRows,
+          engineeringCatchmentArea: catchmentTotalArea,
+          engineeringCatchmentTotalArea: catchmentTotalArea,
+          catchmentTotalArea,
+          waterNeedArea: engineeringPayload.waterNeedArea,
+          waterNeedSpace: engineeringPayload.waterNeedSpace,
+          waterNeedQuantity: engineeringPayload.waterNeedQuantity,
+          waterNeedHouseholdSize: engineeringPayload.waterNeedHouseholdSize,
+          waterNeedDaily: engineeringPayload.waterNeedDaily,
+          engineeringTankSpace: engineeringPayload.engineeringTankSpace,
+          proposedStorageCapacity: engineeringPayload.proposedStorageCapacity,
           },
         });
       } catch (error) {
         // Keep the local save and continue with the existing UX.
       }
+
+      cacheEngineeringCatchmentArea(householdId, catchmentTotalArea);
 
       try {
         const redirectMessage = syncResult?.syncStatus === syncStatusValues.synced
