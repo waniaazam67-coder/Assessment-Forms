@@ -187,198 +187,64 @@ select {
   transform: translateY(-1px);
 }
 
-.sync-status-widget,
-.sync-panel,
-.sync-card {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  z-index: 80;
-  display: grid;
-  gap: 10px;
-  min-width: 240px;
-  max-width: min(320px, calc(100vw - 36px));
-  padding: 14px 16px;
-  border: 1px solid var(--card-border);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 18px 40px rgba(141, 168, 189, 0.18);
-  backdrop-filter: blur(10px);
-}
-
-.sync-status-widget--embedded,
-.sync-panel--embedded,
-.sync-card--embedded {
-  position: static;
-  right: auto;
-  bottom: auto;
-  z-index: auto;
-  min-width: 0;
-  max-width: none;
-  width: 100%;
-  min-height: 250px;
-  padding: 26px;
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-soft);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 250, 252, 0.96));
-  backdrop-filter: none;
-}
-
-.sync-status-widget--embedded .sync-status-widget__message,
-.sync-panel--embedded .sync-panel__message,
-.sync-card--embedded .sync-card__message {
-  margin-top: 4px;
-  font-size: 1rem;
-}
-
-.sync-status-widget--embedded .sync-status-widget__button,
-.sync-panel--embedded .sync-panel__button,
-.sync-card--embedded .sync-card__button {
-  margin-top: auto;
-  min-height: 56px;
-  font-size: 1rem;
-}
-
-.sync-status-widget__row,
-.sync-panel__row,
-.sync-card__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.sync-status-widget__label,
-.sync-status-widget__meta-label,
-.sync-panel__label,
-.sync-panel__meta-label,
-.sync-card__label,
-.sync-card__meta-label {
-  color: var(--text-soft);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.sync-status-widget__badge,
-.sync-status-widget__count,
-.sync-panel__badge,
-.sync-panel__count,
-.sync-card__badge,
-.sync-card__count {
-  font-size: 0.82rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.sync-status-widget__badge,
-.sync-panel__badge,
-.sync-card__badge {
-  color: var(--success-deep);
-}
-
-.sync-status-widget__badge.is-offline,
-.sync-panel__badge.is-offline,
-.sync-card__badge.is-offline {
-  color: #cf5a5a;
-}
-
-.sync-status-widget__count,
-.sync-panel__count,
-.sync-card__count {
-  color: var(--text-soft);
-}
-
-.sync-status-widget__state,
-.sync-panel__state,
-.sync-card__state {
-  padding: 6px 10px;
+.connection-status-pill {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  margin: 12px auto 0;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  padding: 8px 12px;
   border-radius: 999px;
-  font-size: 0.76rem;
+  border: 1px solid rgba(70, 94, 118, 0.18);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-main);
+  box-shadow: 0 10px 24px rgba(74, 104, 127, 0.14);
+  font-size: 0.8rem;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  background: #eef3f7;
-  color: var(--text-main);
 }
 
-.sync-status-widget__state.is-draft,
-.sync-panel__state.is-draft,
-.sync-card__state.is-draft {
-  background: #eef3f7;
-  color: #526472;
+.connection-status-pill[data-connection-status="offline"] {
+  background: linear-gradient(135deg, #fff2f2 0%, #ffe1e1 100%);
+  border-color: rgba(182, 69, 69, 0.34);
+  color: #9e2f2f;
 }
 
-.sync-status-widget__state.is-pending,
-.sync-panel__state.is-pending,
-.sync-card__state.is-pending {
-  background: #fff1d9;
-  color: #9a6200;
+.connection-status-pill[data-connection-status="poor"] {
+  background: linear-gradient(135deg, #fff8e8 0%, #ffe7b8 100%);
+  border-color: rgba(168, 100, 0, 0.34);
+  color: #8a5500;
 }
 
-.sync-status-widget__state.is-syncing,
-.sync-panel__state.is-syncing,
-.sync-card__state.is-syncing {
-  background: #dff2ff;
-  color: #1364a3;
+.connection-status-pill[data-connection-status="syncing"] {
+  background: linear-gradient(135deg, #e7f4ff 0%, #cde9ff 100%);
+  border-color: rgba(21, 93, 153, 0.32);
+  color: #114c7d;
 }
 
-.sync-status-widget__state.is-synced,
-.sync-panel__state.is-synced,
-.sync-card__state.is-synced {
-  background: rgba(88, 194, 125, 0.16);
-  color: var(--success-deep);
+.connection-status-pill[data-connection-status="synced"],
+.connection-status-pill[data-connection-status="online"] {
+  background: linear-gradient(135deg, #e8f8ee 0%, #caefd7 100%);
+  border-color: rgba(24, 102, 60, 0.32);
+  color: #14522f;
 }
 
-.sync-status-widget__state.is-failed,
-.sync-panel__state.is-failed,
-.sync-card__state.is-failed {
-  background: #ffe2e2;
-  color: #b23a3a;
+@media (max-width: 768px) {
+  .connection-status-pill {
+    top: 8px;
+    max-width: calc(100% - 16px);
+    padding: 7px 11px;
+    font-size: 0.74rem;
+    box-shadow: 0 8px 18px rgba(74, 104, 127, 0.16);
+  }
 }
 
-.sync-status-widget__meta,
-.sync-panel__meta,
-.sync-card__meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--text-main);
-  font-size: 0.84rem;
-}
-
-.sync-status-widget__message,
-.sync-panel__message,
-.sync-card__message {
-  margin: 0;
-  color: var(--text-main);
-  font-size: 0.92rem;
-  line-height: 1.5;
-}
-
-.sync-status-widget__button,
-.sync-panel__button,
-.sync-card__button {
-  min-height: 42px;
-  border: 1px solid rgba(88, 194, 125, 0.3);
-  border-radius: 999px;
-  background: rgba(88, 194, 125, 0.12);
-  color: var(--success-deep);
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.sync-status-widget__button:hover,
-.sync-status-widget__button:focus-visible,
-.sync-panel__button:hover,
-.sync-panel__button:focus-visible,
-.sync-card__button:hover,
-.sync-card__button:focus-visible {
-  background: rgba(88, 194, 125, 0.18);
-  border-color: rgba(88, 194, 125, 0.5);
+@media (min-width: 769px) {
+  .connection-status-pill {
+    border-width: 1.5px;
+  }
 }
 
 .manual-dialog {
@@ -1209,6 +1075,32 @@ select {
 
 .helper-text-inline {
   margin: 0;
+}
+
+.helper-text-inline[data-location-status] {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+
+.helper-text-inline[data-location-status] {
+  display: block;
+}
+
+.helper-text-inline[data-location-status].is-active {
+  color: #155d99;
+}
+
+.helper-text-inline[data-location-status].is-success {
+  color: var(--success-deep);
+}
+
+.helper-text-inline[data-location-status].is-warning {
+  color: #a86400;
+}
+
+.helper-text-inline[data-location-status].is-error {
+  color: #b64545;
 }
 
 .repeatable-header {

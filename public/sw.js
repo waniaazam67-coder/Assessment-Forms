@@ -1,4 +1,4 @@
-const APP_VERSION = "2026-05-field-01";
+const APP_VERSION = "2026-05-online-only-01";
 const CACHE_NAME = `assessment-forms-v${APP_VERSION}`;
 const LEGACY_CACHE_PREFIXES = ["assessment-forms-v", "app-shell-", "shehersaaz-app-", "shehersaaz-"];
 const PRECACHE_URLS = [
@@ -160,3 +160,4 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(cacheStaticAsset(event.request));
   }
 });
+

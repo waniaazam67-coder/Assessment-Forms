@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "2026-05-field-01";
+  const APP_VERSION = "2026-05-online-only-01";
   const SW_URL = `/sw.js?v=${encodeURIComponent(APP_VERSION)}`;
   let hasRegisteredServiceWorker = false;
   let isReloadingForUpdate = false;
@@ -118,51 +118,21 @@
   };
 
   const registerServiceWorker = () => {
-    if (
-      hasRegisteredServiceWorker ||
-      !("serviceWorker" in navigator) ||
-      window.location.protocol === "file:" ||
-      (["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173")
-    ) {
+    if (!("serviceWorker" in navigator)) {
       return;
     }
-
-    hasRegisteredServiceWorker = true;
 
     window.addEventListener("load", () => {
       void (async () => {
         try {
-          const registration = await navigator.serviceWorker.register(SW_URL, {
-            updateViaCache: "none",
-          });
-
-          if (registration.waiting && navigator.serviceWorker.controller) {
-            showUpdateBanner();
-          }
-
-          registration.addEventListener("updatefound", () => {
-            const installingWorker = registration.installing;
-            if (!installingWorker) {
-              return;
-            }
-
-            installingWorker.addEventListener("statechange", () => {
-              if (installingWorker.state === "installed" && navigator.serviceWorker.controller) {
-                showUpdateBanner();
-              }
-            });
-          });
-
-          navigator.serviceWorker.addEventListener("controllerchange", () => {
-            if (isReloadingForUpdate) {
-              return;
-            }
-
-            isReloadingForUpdate = true;
-            window.location.reload();
-          });
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((registration) => registration.unregister()));
+          const cacheKeys = await caches.keys();
+          await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+          hasRegisteredServiceWorker = false;
+          navigator.serviceWorker.getRegistration().then((registration) => registration?.unregister?.()).catch(() => null);
         } catch (error) {
-          console.warn("Service worker registration failed:", error);
+          console.warn("Service worker cleanup failed:", error);
         }
       })();
     });

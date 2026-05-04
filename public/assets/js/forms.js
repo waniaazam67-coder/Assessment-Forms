@@ -19,9 +19,15 @@ const pendingSyncQueueStorageKey = "shehersaaz-pending-sync-queue";
 const localSubmissionStatusesStorageKey = "shehersaaz-local-submission-statuses";
 const lastSuccessfulSyncStorageKey = "shehersaaz-last-successful-sync-at";
 const generatedIdsStorageKey = "shehersaaz-generated-household-ids";
+const ONLINE_ONLY_VERSION = "2026-05-online-only-01";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
-const frontendAssetVersion = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-05-field-01";
+const frontendAssetVersion = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-05-online-only-01";
 const formsHomeUrl = window.__SHEHERSAAZ_APP__?.versionedPath?.("/pages/index.html") || `/pages/index.html?v=${frontendAssetVersion}`;
+const requestTimeouts = {
+  health: 4000,
+  householdFetch: 7000,
+  submission: 12000,
+};
 const offlineStateDbName = "shehersaaz-offline-state";
 const offlineStateStoreName = "kv";
 const offlineStateDbVersion = 1;
@@ -46,6 +52,37 @@ const offlineStateKeyMap = {
 const offlineState = { ...offlineStateDefaults };
 let offlineStateDbPromise = null;
 let offlineStateReadyPromise = null;
+let backendConnectionState = "unknown";
+
+const clearLegacyOfflineArtifacts = async () => {
+  try {
+    [
+      eligibleHouseholdsStorageKey,
+      selectedHouseholdStorageKey,
+      submittedFormsStorageKey,
+      postRedirectMessageKey,
+      seafResponsesStorageKey,
+      householdRecordsStorageKey,
+      pendingSyncQueueStorageKey,
+      localSubmissionStatusesStorageKey,
+      lastSuccessfulSyncStorageKey,
+      generatedIdsStorageKey,
+    ].forEach((key) => localStorage.removeItem(key));
+  } catch (error) {
+    // Ignore cleanup failures.
+  }
+
+  try {
+    if ("indexedDB" in window) {
+      await Promise.all([
+        window.indexedDB.deleteDatabase("shehersaaz-offline-state"),
+        window.indexedDB.deleteDatabase("shehersaaz-sync-queue"),
+      ]);
+    }
+  } catch (error) {
+    // Ignore cleanup failures.
+  }
+};
 
 const getConfiguredApiBaseUrl = () => {
   const metaTag = document.querySelector('meta[name="api-base-url"]');
@@ -82,6 +119,23 @@ const getApiBaseUrlCandidates = () => {
 
 const backendBaseUrls = getApiBaseUrlCandidates();
 const backendBaseUrl = backendBaseUrls[0];
+
+const fetchWithTimeout = async (input, options = {}) => {
+  const timeoutMs = Number(options.timeoutMs || 10000);
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(new DOMException("Request timed out.", "TimeoutError")), timeoutMs);
+
+  try {
+    const response = await fetch(input, {
+      ...options,
+      signal: controller.signal,
+      cache: options.cache || "no-store",
+    });
+    return response;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
 
 const cloneOfflineValue = (value) => {
   if (Array.isArray(value)) {
@@ -173,47 +227,7 @@ const persistOfflineStateValue = (stateKey, value) =>
   }).catch(() => null);
 
 const loadOfflineState = async () => {
-  const db = await openOfflineStateDatabase();
-
-  if (db) {
-    const storedEntries = await withOfflineStateStore("readonly", (store) =>
-      new Promise((resolve, reject) => {
-        const request = store.getAll();
-        request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
-        request.onerror = () => reject(request.error);
-      })
-    ).catch(() => []);
-
-    storedEntries.forEach((entry) => {
-      if (entry?.key && Object.prototype.hasOwnProperty.call(offlineStateDefaults, entry.key)) {
-        offlineState[entry.key] = cloneOfflineValue(entry.value ?? offlineStateDefaults[entry.key]);
-      }
-    });
-  }
-
-  Object.entries(offlineStateKeyMap).forEach(([storageKey, stateKey]) => {
-    const currentValue = offlineState[stateKey];
-    const hasCurrentValue = Array.isArray(currentValue)
-      ? currentValue.length > 0
-      : currentValue && typeof currentValue === "object"
-        ? Object.keys(currentValue).length > 0
-        : Boolean(currentValue);
-
-    if (!hasCurrentValue) {
-      offlineState[stateKey] = cloneOfflineValue(readLegacyOfflineStateValue(storageKey, offlineStateDefaults[stateKey]));
-    }
-
-    try {
-      localStorage.removeItem(storageKey);
-    } catch (error) {
-      // Ignore legacy localStorage cleanup errors.
-    }
-  });
-
-  await Promise.all(
-    Object.values(offlineStateKeyMap).map((stateKey) => persistOfflineStateValue(stateKey, offlineState[stateKey]))
-  );
-
+  await clearLegacyOfflineArtifacts();
   return offlineState;
 };
 
@@ -451,10 +465,11 @@ const apiJsonRequest = async (path, options = {}) => {
 
   for (const baseUrl of backendBaseUrls) {
     try {
-      const response = await fetch(`${baseUrl}${path}`, {
+      const response = await fetchWithTimeout(`${baseUrl}${path}`, {
         method: options.method || "GET",
-        cache: options.cache || "no-store",
         keepalive: Boolean(options.keepalive),
+        timeoutMs: options.timeoutMs || requestTimeouts.submission,
+        cache: options.cache || "no-store",
         headers: {
           "Content-Type": "application/json",
           ...(options.headers || {}),
@@ -492,6 +507,33 @@ const apiJsonRequest = async (path, options = {}) => {
 const buildFreshApiPath = (path) => {
   const separator = path.includes("?") ? "&" : "?";
   return `${path}${separator}t=${Date.now()}`;
+};
+
+const isTimeoutError = (error) => {
+  return Boolean(
+    error &&
+    (
+      error.name === "TimeoutError" ||
+      error.name === "AbortError" ||
+      String(error.message || "").toLowerCase().includes("timed out")
+    )
+  );
+};
+
+const getConnectionStatusLabel = () => {
+  if (!navigator.onLine) {
+    return "Internet required";
+  }
+
+  if (backendConnectionState === "poor") {
+    return "Internet required";
+  }
+
+  if (backendConnectionState === "online") {
+    return "Online";
+  }
+
+  return "Online";
 };
 
 const getStageSubmissionFlag = (household = {}, formKey = "") => {
@@ -538,8 +580,7 @@ const createLocalSubmissionId = () => {
 };
 
 let syncQueueDbPromise = null;
-let syncStatusWidget = null;
-let syncStatusMessageTimeoutId = null;
+let connectionStatusWidget = null;
 
 const openSyncQueueDatabase = () => {
   if (!("indexedDB" in window)) {
@@ -660,6 +701,8 @@ const putSyncQueueItem = async (item) => {
   const normalizedItem = {
     ...item,
     localSubmissionId: item.localSubmissionId || createLocalSubmissionId(),
+    endpoint: item.endpoint || item.endpointPath || "",
+    endpointPath: item.endpointPath || item.endpoint || "",
     createdAt: item.createdAt || new Date().toISOString(),
     updatedAt: item.updatedAt || new Date().toISOString(),
     syncStatus: item.syncStatus || syncStatusValues.pending,
@@ -700,15 +743,15 @@ const getPendingSyncQueueCount = async () => {
 const getSyncStatusBadgeLabel = (status) => {
   switch (status) {
     case syncStatusValues.pending:
-      return "Pending sync";
+      return "Submitting";
     case syncStatusValues.syncing:
-      return "Syncing";
+      return "Submitting";
     case syncStatusValues.synced:
-      return "Synced";
+      return "Submitted";
     case syncStatusValues.failed:
-      return "Sync failed";
+      return "Failed";
     default:
-      return "Draft";
+      return "Not Submitted";
   }
 };
 
@@ -719,19 +762,24 @@ const getUserFacingFormStatus = (rawStatus) => {
     return "Submitted";
   }
 
-  if (["pending", "pending_sync"].includes(status)) {
-    return "Pending Sync";
-  }
-
-  if (status === "syncing") {
-    return "Syncing";
+  if (["pending", "pending_sync", "syncing"].includes(status)) {
+    return "Submitting";
   }
 
   if (["failed", "failed_sync"].includes(status)) {
-    return "Failed Sync";
+    return "Failed - Try Again";
   }
 
   return "Not Submitted";
+};
+
+const normalizeBackendFormStatus = (rawStatus) => {
+  const status = String(rawStatus || "").trim().toLowerCase();
+  if (["submitted", "complete", "completed", "synced", "true"].includes(status)) {
+    return "Submitted";
+  }
+
+  return "";
 };
 
 const getUserFacingFormStatusTone = (rawStatus) => {
@@ -773,7 +821,7 @@ const getCurrentFormSyncState = () => {
   const localStatus = getLatestSubmissionStatusForItem(householdId, formType);
   const syncStatus = localStatus?.syncStatus || syncStatusValues.draft;
   const submittedForms = readSubmittedForms();
-  const backendStageStatus = submittedForms[householdId]?.[formType] || "";
+  const backendStageStatus = normalizeBackendFormStatus(submittedForms[householdId]?.[formType] || "");
   const stageStatus = backendStageStatus === "Submitted" ? "Submitted" : syncStatus;
 
   if (formType === "inventory") {
@@ -790,7 +838,7 @@ const getCurrentFormSyncState = () => {
   return {
     ...localStatus,
     stageStatus,
-    syncStatus,
+    syncStatus: backendStageStatus === "Submitted" ? "Submitted" : "Not Submitted",
     badgeLabel: getUserFacingFormStatus(stageStatus),
   };
 };
@@ -887,88 +935,57 @@ const inferFormTypeFromSyncPath = (path, payload = {}) => {
 
 const shouldRetrySyncError = (error) => !error?.status || Number(error.status) >= 500;
 
-const ensureSyncStatusWidget = () => {
-  if (syncStatusWidget || !document.body) {
-    return syncStatusWidget;
+const ensureConnectionStatusWidget = () => {
+  if (connectionStatusWidget || !document.body) {
+    return connectionStatusWidget;
   }
 
-  const homeGrid = document.querySelector(".home-page .form-grid");
-  if (!homeGrid) {
-    return null;
-  }
-
-  const submittedFormsTile = document.querySelector("[data-open-submitted-forms]");
-  const widget = document.createElement("aside");
-  widget.className = "sync-status-widget";
-  widget.dataset.syncStatusWidget = "true";
-  widget.innerHTML = `
-    <div class="sync-status-widget__row">
-      <span class="sync-status-widget__badge" data-sync-network-status>Online</span>
-    </div>
-    <div class="sync-status-widget__meta">
-      <span class="sync-status-widget__meta-label">Last sync</span>
-      <span data-sync-last-time>Never</span>
-    </div>
-    <button class="sync-status-widget__button" type="button" data-sync-now-button>Sync now</button>
-  `;
-
-  widget.classList.add("sync-status-widget--embedded");
-  if (submittedFormsTile?.parentElement === homeGrid) {
-    submittedFormsTile.insertAdjacentElement("afterend", widget);
-  } else {
-    homeGrid.append(widget);
-  }
-
-  const syncNowButton = widget.querySelector("[data-sync-now-button]");
-  syncNowButton?.addEventListener("click", () => {
-    void retryPendingSyncSubmissions({ manual: true });
-  });
-
-  syncStatusWidget = widget;
+  const pageRoot = document.querySelector(".form-page, .home-page, .admin-page") || document.body;
+  const widget = document.createElement("div");
+  widget.className = "connection-status-pill";
+  widget.dataset.connectionStatusWidget = "true";
+  widget.setAttribute("aria-live", "polite");
+  widget.textContent = getConnectionStatusLabel();
+  pageRoot.insertAdjacentElement("afterbegin", widget);
+  connectionStatusWidget = widget;
   return widget;
 };
 
-const setSyncStatusMessage = (message) => {
-  const widget = ensureSyncStatusWidget();
-  const messageElement = widget?.querySelector("[data-sync-status-message]");
-  if (!messageElement) {
-    return;
-  }
-
-  messageElement.textContent = message;
-
-  if (syncStatusMessageTimeoutId) {
-    window.clearTimeout(syncStatusMessageTimeoutId);
-  }
-
-  syncStatusMessageTimeoutId = window.setTimeout(() => {
-    const fallbackMessage = navigator.onLine ? "Backend sync ready." : "Offline mode active. Changes will sync later.";
-    messageElement.textContent = fallbackMessage;
-  }, 3200);
-};
-
-const updateSyncStatusWidget = async () => {
-  const widget = ensureSyncStatusWidget();
+const updateConnectionStatusWidget = async () => {
+  const widget = ensureConnectionStatusWidget();
   if (!widget) {
     return;
   }
 
-  const networkBadge = widget.querySelector("[data-sync-network-status]");
-  const lastSyncTime = widget.querySelector("[data-sync-last-time]");
+  let status = "online";
+  let label = "Online";
 
-  if (networkBadge) {
-    const isOnline = navigator.onLine;
-    networkBadge.textContent = isOnline ? "Online" : "Offline";
-    networkBadge.classList.toggle("is-offline", !isOnline);
+  if (!navigator.onLine) {
+    status = "offline";
+    label = "Internet required";
+  } else {
+    try {
+      const response = await fetchWithTimeout(`/api/health?t=${Date.now()}`, {
+        timeoutMs: requestTimeouts.health,
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`Health check failed with status ${response.status}`);
+      }
+      status = "online";
+      label = "Online";
+    } catch (error) {
+      status = "poor";
+      label = "Internet required";
+      if (isTimeoutError(error)) {
+        console.warn("Backend health check timed out:", error);
+      }
+    }
   }
 
-  if (lastSyncTime) {
-    const value = getLastSuccessfulSyncTime();
-    lastSyncTime.textContent = value ? new Intl.DateTimeFormat("en-GB", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(value)) : "Never";
-  }
+  backendConnectionState = status;
+  widget.dataset.connectionStatus = status;
+  widget.textContent = label;
 };
 
 const migrateLegacyPendingSyncQueue = async () => {
@@ -1007,120 +1024,74 @@ const syncQueuedSubmission = async (queueItem, options = {}) => {
     };
   }
 
-  const existing = await getSyncQueueItem(queueItem.localSubmissionId);
-  const nextRetryCount = Number(existing?.retryCount || queueItem.retryCount || 0) + 1;
-  const syncingItem = await putSyncQueueItem({
-    ...(existing || queueItem),
+  const submittingItem = {
+    ...queueItem,
     syncStatus: syncStatusValues.syncing,
-    retryCount: nextRetryCount,
-    updatedAt: new Date().toISOString(),
-    lastError: null,
-  });
-  saveLocalSubmissionStatus(syncingItem);
-  await updateSyncStatusWidget();
+  };
+  await updateConnectionStatusWidget();
 
   try {
-    const response = await apiJsonRequest(syncingItem.endpointPath, {
-      method: syncingItem.method || "POST",
+    const response = await apiJsonRequest(submittingItem.endpointPath, {
+      method: submittingItem.method || "POST",
       body: JSON.stringify({
-        ...(syncingItem.payload || {}),
-        localSubmissionId: syncingItem.localSubmissionId,
+        ...(submittingItem.payload || {}),
+        localSubmissionId: submittingItem.localSubmissionId,
       }),
-      keepalive: String(syncingItem.method || "POST").toUpperCase() === "POST",
+      keepalive: String(submittingItem.method || "POST").toUpperCase() === "POST",
+      timeoutMs: options.timeoutMs || requestTimeouts.submission,
     });
 
-    await putSyncQueueItem({
-      ...syncingItem,
-      syncStatus: syncStatusValues.synced,
-      syncedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      retryCount: 0,
-      lastError: null,
-      response,
-    });
-    saveLocalSubmissionStatus({
-      ...syncingItem,
-      syncStatus: syncStatusValues.synced,
-      syncedAt: new Date().toISOString(),
-      lastError: null,
-    });
     setLastSuccessfulSyncTime();
-    await confirmSyncedQueueItem(syncingItem);
-    await deleteSyncQueueItem(syncingItem.localSubmissionId);
     await syncSharedHouseholdStateFromBackend();
+    await updateConnectionStatusWidget();
 
-    await updateSyncStatusWidget();
+    await updateConnectionStatusWidget();
     if (!options.silent) {
-      setSyncStatusMessage(options.successMessage || "Submitted to server.");
+      showFloatingMessage(options.successMessage || "Submitted");
     }
 
     return {
       ok: true,
       queued: false,
       syncStatus: syncStatusValues.synced,
-      localSubmissionId: syncingItem.localSubmissionId,
+      localSubmissionId: submittingItem.localSubmissionId,
       response,
     };
   } catch (error) {
-    const nextStatus = shouldRetrySyncError(error) ? syncStatusValues.pending : syncStatusValues.failed;
-    await putSyncQueueItem({
-      ...syncingItem,
-      syncStatus: nextStatus,
-      updatedAt: new Date().toISOString(),
-      lastError: error instanceof Error ? error.message : String(error),
-      syncedAt: null,
-    });
-    saveLocalSubmissionStatus({
-      ...syncingItem,
-      syncStatus: nextStatus,
-      syncedAt: null,
+    const nextStatus = syncStatusValues.failed;
+    const isTimedOut = isTimeoutError(error);
+    console.warn("Sync attempt failed:", {
+      localSubmissionId: submittingItem.localSubmissionId,
+      householdId: submittingItem.householdId,
+      formType: submittingItem.formType,
+      endpointPath: submittingItem.endpointPath,
+      method: submittingItem.method,
+      retryCount: Number(submittingItem.retryCount || 0) + 1,
+      nextStatus,
+      timedOut: isTimedOut,
       lastError: error instanceof Error ? error.message : String(error),
     });
 
-    await updateSyncStatusWidget();
+    await updateConnectionStatusWidget();
     if (!options.silent) {
-      setSyncStatusMessage(nextStatus === syncStatusValues.pending ? "Saved offline. This form will sync when internet returns." : "Sync failed. Please retry.");
+      showFloatingMessage(isTimedOut ? "Connection is weak or unavailable. Please try again." : "Failed / Try Again");
     }
 
     return {
       ok: false,
-      queued: nextStatus === syncStatusValues.pending,
+      queued: false,
       syncStatus: nextStatus,
-      localSubmissionId: syncingItem.localSubmissionId,
+      localSubmissionId: submittingItem.localSubmissionId,
       error,
     };
   }
 };
 
 const retryPendingSyncSubmissions = async (options = {}) => {
-  const queue = await getAllSyncQueueItems();
-  const pendingItems = queue
-    .filter((item) => [syncStatusValues.pending, syncStatusValues.failed].includes(item.syncStatus))
-    .sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")));
-
-  if (pendingItems.length === 0) {
-    await updateSyncStatusWidget();
-    if (options.manual) {
-      setSyncStatusMessage("No pending submissions to sync.");
-    }
-    return [];
+  if (options.manual) {
+    showFloatingMessage("Online mode only.");
   }
-
-  const results = [];
-  for (const item of pendingItems) {
-    results.push(await syncQueuedSubmission(item, { silent: true }));
-  }
-
-  await updateSyncStatusWidget();
-  const allSynced = results.every((result) => result.ok);
-  const anySynced = results.some((result) => result.ok);
-  if (anySynced) {
-    setSyncStatusMessage("Submitted to server.");
-  } else if (options.manual || !allSynced) {
-    setSyncStatusMessage("Some submissions are still pending sync.");
-  }
-
-  return results;
+  return [];
 };
 
 const isEligibleHouseholdStatus = (value) => {
@@ -1216,22 +1187,28 @@ const buildPendingSubmittedFormsFromLocalState = async () => {
   return pendingForms;
 };
 
-const syncLocalStatusesWithBackendHouseholds = (households = []) => {
+const reconcileLocalStatusesWithBackendHouseholds = async (households = []) => {
   if (!Array.isArray(households) || households.length === 0) {
     return false;
   }
 
+  const queueItems = await getAllSyncQueueItems().catch(() => []);
   const statuses = readLocalSubmissionStatuses();
   let changed = false;
+  const backendStageByHousehold = new Map();
 
   households.forEach((household) => {
     const householdId = household?.householdId;
-    if (!householdId || !household?.stageStatus) {
+    if (!householdId) {
       return;
     }
 
+    backendStageByHousehold.set(householdId, household.stageStatus || {});
+  });
+
+  backendStageByHousehold.forEach((stageStatus, householdId) => {
     ["seaf", "engineering", "inventory"].forEach((formType) => {
-      if (!household.stageStatus[formType]) {
+      if (!stageStatus?.[formType]) {
         return;
       }
 
@@ -1249,21 +1226,39 @@ const syncLocalStatusesWithBackendHouseholds = (households = []) => {
             lastError: null,
           };
           changed = true;
-
-          if (formType === "inventory") {
-            console.log("Inventory backend status overrode local pending status:", {
-              householdId,
-              normalizedFormType: formType,
-              backendInventorySubmitted: true,
-              localQueueInventoryStatus: entry.syncStatus,
-              finalDisplayedInventoryStatus: "Submitted",
-              backendOverrideApplied: true,
-            });
-          }
         }
       });
     });
   });
+
+  for (const queueItem of queueItems) {
+    const householdStageStatus = backendStageByHousehold.get(queueItem?.householdId) || {};
+    const formType = normalizeFormType(queueItem?.formType);
+    if (!queueItem?.localSubmissionId || !householdStageStatus?.[formType]) {
+      continue;
+    }
+
+    await deleteSyncQueueItem(queueItem.localSubmissionId);
+    saveLocalSubmissionStatus({
+      ...queueItem,
+      formType,
+      syncStatus: syncStatusValues.synced,
+      syncedAt: queueItem.syncedAt || new Date().toISOString(),
+      lastError: null,
+    });
+    changed = true;
+
+    if (formType === "inventory") {
+      console.log("Inventory backend status overrode local pending status:", {
+        householdId: queueItem.householdId,
+        normalizedFormType: formType,
+        backendInventorySubmitted: true,
+        localQueueInventoryStatus: queueItem.syncStatus,
+        finalDisplayedInventoryStatus: "Submitted",
+        backendOverrideApplied: true,
+      });
+    }
+  }
 
   if (changed) {
     writeLocalSubmissionStatuses(statuses);
@@ -1274,12 +1269,16 @@ const syncLocalStatusesWithBackendHouseholds = (households = []) => {
 
 const syncSharedHouseholdStateFromBackend = async () => {
   if (!navigator.onLine) {
+    backendConnectionState = "offline";
+    await updateConnectionStatusWidget();
+    showFloatingMessage("Internet connection is required to use this form. Please connect to the internet and try again.", { persistent: true });
     return null;
   }
 
   try {
-    const households = await apiJsonRequest(buildFreshApiPath("/api/households"), {
+    const households = await apiJsonRequest(`/api/households?t=${Date.now()}`, {
       cache: "no-store",
+      timeoutMs: requestTimeouts.householdFetch,
     });
     if (!Array.isArray(households)) {
       return null;
@@ -1297,7 +1296,9 @@ const syncSharedHouseholdStateFromBackend = async () => {
     const pendingLocalSubmittedForms = await buildPendingSubmittedFormsFromLocalState();
     const mergedSubmittedForms = mergeSubmittedFormsRecords(backendSubmittedForms, pendingLocalSubmittedForms);
     writeSubmittedForms(mergedSubmittedForms);
-    syncLocalStatusesWithBackendHouseholds(households);
+    await reconcileLocalStatusesWithBackendHouseholds(households);
+    backendConnectionState = "online";
+    await updateConnectionStatusWidget();
 
     return {
       source: "backend",
@@ -1306,6 +1307,10 @@ const syncSharedHouseholdStateFromBackend = async () => {
       submittedForms: mergedSubmittedForms,
     };
   } catch (error) {
+    backendConnectionState = "poor";
+    await updateConnectionStatusWidget();
+    console.warn("Backend household refresh failed:", error instanceof Error ? error.message : error);
+    showFloatingMessage("Connection is weak or unavailable. Please try again.", { persistent: true });
     return null;
   }
 };
@@ -1321,68 +1326,47 @@ const getEligibleHouseholdsForPicker = async () => {
       };
     }
   } catch (error) {
-    // Fall through to cached local data.
+    // Fall through to empty state.
   }
 
-  console.log("Using IndexedDB fallback for eligibility");
+  console.log("Internet connection is required to use this form. Please connect to the internet and try again.");
   return {
-    source: "cache",
-    households: mergeEligibleHouseholds(readEligibleHouseholds()),
+    source: "backend",
+    households: [],
   };
 };
 
 const flushPendingSyncQueue = async () => {
-  await retryPendingSyncSubmissions({ silent: true });
+  return [];
 };
 
-const queueBackendSync = (path, body, method = "POST", options = {}) => {
-  return (async () => {
-    const queueItem = await putSyncQueueItem({
-      localSubmissionId: options.localSubmissionId || body?.localSubmissionId || createLocalSubmissionId(),
-      householdId: body?.householdId || options.householdId || "",
-      formType: options.formType || inferFormTypeFromSyncPath(path, body),
-      endpointPath: path,
-      method,
-      payload: body || {},
-      syncStatus: syncStatusValues.pending,
-      createdAt: options.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      syncedAt: null,
-      lastError: null,
-      retryCount: 0,
-    });
-    saveLocalSubmissionStatus(queueItem);
-
-    await updateSyncStatusWidget();
-    return syncQueuedSubmission(queueItem, {
-      silent: Boolean(options.silent),
-      successMessage: options.successMessage || "Submitted successfully.",
-    });
-  })();
-};
+const queueBackendSync = (path, body, method = "POST", options = {}) =>
+  apiJsonRequest(path, {
+    method,
+    body: JSON.stringify(body || {}),
+    timeoutMs: options.timeoutMs || requestTimeouts.submission,
+  });
 
 window.addEventListener("online", () => {
   void (async () => {
-    await ensureOfflineStateReady();
-    await flushPendingSyncQueue();
+    await clearLegacyOfflineArtifacts();
+    await updateConnectionStatusWidget();
     await syncSharedHouseholdStateFromBackend();
-    await updateSyncStatusWidget();
+    await updateConnectionStatusWidget();
   })();
 });
 
 window.addEventListener("offline", () => {
-  void ensureOfflineStateReady().then(() => updateSyncStatusWidget());
-  setSyncStatusMessage("Offline mode active. Changes will sync later.");
+  backendConnectionState = "offline";
+  void updateConnectionStatusWidget();
 });
 
 window.setTimeout(() => {
   void (async () => {
-    await ensureOfflineStateReady();
-    ensureSyncStatusWidget();
-    await migrateLegacyPendingSyncQueue();
-    await flushPendingSyncQueue();
+    await clearLegacyOfflineArtifacts();
+    await updateConnectionStatusWidget();
     await syncSharedHouseholdStateFromBackend();
-    await updateSyncStatusWidget();
+    await updateConnectionStatusWidget();
   })();
 }, 0);
 
@@ -2641,7 +2625,7 @@ const setSubmittedFormStatus = (householdId, formKey, status = "Submitted", sync
     householdPatch,
   }, "POST", {
     formType: normalizedFormKey,
-    successMessage: "Submitted successfully.",
+    successMessage: "Submitted",
   });
 
   return syncPromise.then(async (result) => {
@@ -2742,9 +2726,14 @@ const populateSubmittedFormsTable = () => {
 
 if (submittedFormsDialog && openSubmittedFormsButton && closeSubmittedFormsButton) {
   openSubmittedFormsButton.addEventListener("click", async () => {
-    await syncSharedHouseholdStateFromBackend();
-    populateSubmittedFormsTable();
     submittedFormsDialog.showModal();
+    populateSubmittedFormsTable();
+    if (navigator.onLine) {
+      void (async () => {
+        await syncSharedHouseholdStateFromBackend();
+        populateSubmittedFormsTable();
+      })();
+    }
   });
 
   closeSubmittedFormsButton.addEventListener("click", () => {
@@ -3244,15 +3233,20 @@ if (selectedHouseholdSummary || selectedHouseholdIdInput || selectedHouseholdNam
   const selectedHousehold = readSelectedHousehold();
   if (selectedHousehold) {
     syncSelectedHouseholdFields(selectedHousehold);
-    void (async () => {
-      const record = await hydrateHouseholdRecordFromBackend(selectedHousehold.householdId || "");
-      if (record) {
-        syncSelectedHouseholdFields({
-          ...selectedHousehold,
-          ...record,
-        });
-      }
-    })();
+    if (navigator.onLine) {
+      void (async () => {
+        const record = await hydrateHouseholdRecordFromBackend(selectedHousehold.householdId || "");
+        if (record) {
+          syncSelectedHouseholdFields({
+            ...selectedHousehold,
+            ...record,
+          });
+        }
+      })();
+    } else {
+      backendConnectionState = "offline";
+      void updateConnectionStatusWidget();
+    }
   }
 }
 
@@ -3629,18 +3623,14 @@ if (inventoryForm) {
         });
       } catch (error) {
         if (inventoryFeedback) {
-          inventoryFeedback.textContent = "Inventory was saved locally, but the backend/database save did not complete yet.";
+          inventoryFeedback.textContent = "Failed - try again";
           inventoryFeedback.classList.add("form-feedback-error");
           inventoryFeedback.classList.remove("form-feedback-success");
         }
       }
 
       try {
-        const redirectMessage = syncResult?.syncStatus === syncStatusValues.synced
-          ? "Submitted successfully."
-          : syncResult?.syncStatus === syncStatusValues.pending
-            ? "Saved offline. This form will sync when internet returns."
-            : "Sync failed. Please retry.";
+        const redirectMessage = syncResult?.ok !== false ? "Submitted" : "Failed - try again";
         sessionStorage.setItem(postRedirectMessageKey, redirectMessage);
       } catch (error) {
         // Ignore sessionStorage errors.
@@ -3989,11 +3979,7 @@ if (socioeconomicForm) {
       }
 
       try {
-        const redirectMessage = syncResult?.syncStatus === syncStatusValues.synced
-          ? "Submitted successfully."
-          : syncResult?.syncStatus === syncStatusValues.pending
-            ? "Saved offline. This form will sync when internet returns."
-            : "Sync failed. Please retry.";
+        const redirectMessage = syncResult?.ok !== false ? "Submitted" : "Failed - try again";
         sessionStorage.setItem(postRedirectMessageKey, redirectMessage);
       } catch (error) {
         // Ignore sessionStorage errors.
@@ -4796,11 +4782,7 @@ if (engineeringForm) {
       cacheEngineeringCatchmentArea(householdId, catchmentTotalArea);
 
       try {
-        const redirectMessage = syncResult?.syncStatus === syncStatusValues.synced
-          ? "Submitted successfully."
-          : syncResult?.syncStatus === syncStatusValues.pending
-            ? "Saved offline. This form will sync when internet returns."
-            : "Sync failed. Please retry.";
+        const redirectMessage = syncResult?.ok !== false ? "Submitted" : "Failed - try again";
         sessionStorage.setItem(postRedirectMessageKey, redirectMessage);
       } catch (error) {
         // Ignore sessionStorage errors.
@@ -4830,6 +4812,7 @@ if (householdForm) {
   const catchmentAreaInput = document.querySelector("[data-catchment-area]");
   const tankSpaceSelect = document.querySelector("[data-tank-space]");
   const slopeSelect = document.querySelector("[data-slope-select]");
+  const locationStatusText = document.querySelector("[data-location-status]");
   const interviewAddressInput = document.querySelector("[data-interview-address]");
   const respondantGenderInput = document.querySelector("[data-respondant-gender]");
   const respondantPhoneInput = document.querySelector("[data-respondant-phone]");
@@ -4866,6 +4849,10 @@ if (householdForm) {
     const householdId = householdIdInput?.value.trim() || "";
     const surveyDate = surveyDateInput?.value || "";
     const householdLocation = householdLocationInput?.value.trim() || "";
+    const latitude = householdLocationInput?.dataset.latitude || "";
+    const longitude = householdLocationInput?.dataset.longitude || "";
+    const accuracy = householdLocationInput?.dataset.accuracy || "";
+    const locationStatus = householdLocationInput?.dataset.locationStatus || "";
     const city = citySelect?.value || "";
     const ucnc = ucncSelect?.value || "";
     const address = interviewAddressInput?.value.trim() || "";
@@ -4889,6 +4876,10 @@ if (householdForm) {
       householdId,
       surveyDate,
       householdLocation,
+      latitude,
+      longitude,
+      accuracy,
+      locationStatus,
       city,
       ucnc,
       interviewAddress: address,
@@ -4913,6 +4904,10 @@ if (householdForm) {
       householdId,
       surveyDate,
       householdLocation,
+      latitude,
+      longitude,
+      accuracy,
+      locationStatus,
       city,
       ucnc,
       address,
@@ -4933,6 +4928,27 @@ if (householdForm) {
       eligibilityStatus,
       tableRow,
     };
+  };
+
+  const persistHouseholdCoordinates = ({ latitude, longitude, accuracy = "", locationStatus = "captured" } = {}) => {
+    const householdId = householdIdInput?.value.trim() || readSelectedHousehold()?.householdId || "";
+    if (!householdId || !latitude || !longitude) {
+      return;
+    }
+
+    const patch = {
+      latitude,
+      longitude,
+      accuracy,
+      locationStatus,
+      householdLocation: `${latitude}, ${longitude}`,
+    };
+
+    upsertHouseholdRecord(householdId, patch);
+    mergeSelectedHousehold({
+      householdId,
+      ...patch,
+    });
   };
 
   const showFloatingMessage = (message, options = {}) => {
@@ -4978,30 +4994,80 @@ if (householdForm) {
     }
   };
 
-  const formatGeolocationError = (error) => {
-    if (!error) {
-      return "Unable to fetch the current location.";
-    }
-
-    switch (error.code) {
-      case error.PERMISSION_DENIED:
-        return "Location access was denied. Please allow browser location permission and try again.";
-      case error.POSITION_UNAVAILABLE:
-        return "Current location is unavailable right now. Please try again.";
-      case error.TIMEOUT:
-        return "Fetching the current location timed out. Please try again.";
-      default:
-        return "Unable to fetch the current location.";
-    }
-  };
-
-  const captureCurrentHouseholdLocation = () => {
-    if (!householdLocationInput || isFetchingHouseholdLocation) {
+  const setLocationStatusText = (message, tone = "") => {
+    if (!locationStatusText) {
       return;
     }
 
+    locationStatusText.textContent = message;
+    locationStatusText.classList.remove("is-active", "is-success", "is-warning", "is-error");
+    if (tone) {
+      locationStatusText.classList.add(tone);
+    }
+  };
+
+  const getCoordinatesWithTimeout = (timeoutMs = 10000) => {
     if (!("geolocation" in navigator)) {
-      showFloatingMessage("This browser does not support location access.");
+      return Promise.resolve({
+        ok: false,
+        locationStatus: "not_supported",
+        error: new Error("Geolocation is not supported."),
+      });
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (result) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(result);
+      };
+
+      const timeoutId = window.setTimeout(() => {
+        finish({
+          ok: false,
+          locationStatus: "timeout",
+          error: new Error("Geolocation timed out."),
+        });
+      }, timeoutMs);
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          window.clearTimeout(timeoutId);
+          finish({
+            ok: true,
+            latitude: Number(position.coords.latitude).toFixed(6),
+            longitude: Number(position.coords.longitude).toFixed(6),
+            accuracy: Number(position.coords.accuracy || 0).toFixed(2),
+            locationStatus: "captured",
+          });
+        },
+        (error) => {
+          window.clearTimeout(timeoutId);
+          const locationStatus =
+            error?.code === error.PERMISSION_DENIED ? "permission_denied" :
+            error?.code === error.POSITION_UNAVAILABLE ? "unavailable" :
+            error?.code === error.TIMEOUT ? "timeout" :
+            "unavailable";
+          finish({
+            ok: false,
+            locationStatus,
+            error,
+          });
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: timeoutMs,
+          maximumAge: 5 * 60 * 1000,
+        }
+      );
+    });
+  };
+
+  const captureCurrentHouseholdLocation = async () => {
+    if (!householdLocationInput || isFetchingHouseholdLocation) {
       return;
     }
 
@@ -5010,27 +5076,32 @@ if (householdForm) {
     householdLocationInput.value = "Fetching current coordinates...";
     householdLocationInput.setAttribute("aria-busy", "true");
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const latitude = Number(position.coords.latitude).toFixed(6);
-        const longitude = Number(position.coords.longitude).toFixed(6);
-        householdLocationInput.value = `${latitude}, ${longitude}`;
-        householdLocationInput.removeAttribute("aria-busy");
-        isFetchingHouseholdLocation = false;
-        showFloatingMessage("Current coordinates captured successfully.");
-      },
-      (error) => {
-        householdLocationInput.value = previousValue;
-        householdLocationInput.removeAttribute("aria-busy");
-        isFetchingHouseholdLocation = false;
-        showFloatingMessage(formatGeolocationError(error), { persistent: true });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
+    try {
+      setLocationStatusText("Trying GPS...", "is-active");
+      let result = await getCoordinatesWithTimeout(12000);
+      if (!result.ok && result.locationStatus !== "permission_denied") {
+        result = await getCoordinatesWithTimeout(15000);
       }
-    );
+      if (result.ok) {
+        householdLocationInput.value = `${result.latitude}, ${result.longitude}`;
+        householdLocationInput.dataset.latitude = result.latitude;
+        householdLocationInput.dataset.longitude = result.longitude;
+        householdLocationInput.dataset.accuracy = result.accuracy;
+        householdLocationInput.dataset.locationStatus = result.locationStatus;
+        persistHouseholdCoordinates(result);
+        setLocationStatusText("Location captured.", "is-success");
+        showFloatingMessage("Location captured.");
+      } else {
+        householdLocationInput.value = previousValue;
+        householdLocationInput.dataset.locationStatus = result.locationStatus;
+        householdLocationInput.dataset.locationError = result.error?.message || "";
+        setLocationStatusText("Location unavailable, continuing without coordinates.", "is-warning");
+        showFloatingMessage("Could not get coordinates. You can continue and sync the form later.", { persistent: true });
+      }
+    } finally {
+      householdLocationInput.removeAttribute("aria-busy");
+      isFetchingHouseholdLocation = false;
+    }
   };
 
   const readGeneratedIds = () => {
@@ -5157,6 +5228,16 @@ if (householdForm) {
         captureCurrentHouseholdLocation();
       }
     });
+    const latitude = String(householdLocationInput.dataset.latitude || "").trim();
+    const longitude = String(householdLocationInput.dataset.longitude || "").trim();
+    const locationStatus = String(householdLocationInput.dataset.locationStatus || "").trim();
+    if (latitude && longitude) {
+      setLocationStatusText("Location captured.", "is-success");
+    } else if (locationStatus === "permission_denied" || locationStatus === "unavailable" || locationStatus === "timeout") {
+      setLocationStatusText("Location unavailable, continuing without coordinates.", "is-warning");
+    } else {
+      setLocationStatusText("Click to capture exact coordinates.", "");
+    }
   }
 
   const formatCnicValue = (value) => {
@@ -5518,10 +5599,10 @@ if (householdForm) {
         if (eligibilityResult.isEligible) {
           try {
             const syncResult = await saveHouseholdAssessmentRecord("passed");
-            if (syncResult?.syncStatus === syncStatusValues.pending) {
-              showFloatingMessage("Saved offline. This form will sync when internet returns.");
-            } else if (syncResult?.syncStatus === syncStatusValues.synced) {
-              showFloatingMessage("Submitted successfully.");
+            if (syncResult?.ok !== false) {
+              showFloatingMessage("Submitted");
+            } else {
+              showFloatingMessage("Failed - try again");
             }
           } catch (error) {
             // Keep the local save and allow the user to continue.
@@ -5532,10 +5613,10 @@ if (householdForm) {
 
         try {
           const syncResult = await saveHouseholdAssessmentRecord("failed");
-          if (syncResult?.syncStatus === syncStatusValues.pending) {
-            showFloatingMessage("Saved offline. This form will sync when internet returns.");
-          } else if (syncResult?.syncStatus === syncStatusValues.synced) {
-            showFloatingMessage("Submitted successfully.");
+          if (syncResult?.ok !== false) {
+            showFloatingMessage("Submitted");
+          } else {
+            showFloatingMessage("Failed - try again");
           }
         } catch (error) {
           // Keep the local save and continue to show the eligibility result.
@@ -5566,20 +5647,20 @@ if (householdForm) {
         try {
           syncResult = await saveHouseholdAssessmentRecord("passed");
         } catch (error) {
-          feedback.textContent = "Household information was saved locally, but the backend/database save did not complete yet.";
+          feedback.textContent = "Failed - try again";
           feedback.classList.add("form-feedback-error");
           feedback.classList.remove("form-feedback-success");
           return;
         }
-        feedback.textContent = syncResult?.syncStatus === syncStatusValues.pending
-          ? "Saved offline. This form will sync when internet returns."
-          : syncResult?.syncStatus === syncStatusValues.synced
-            ? "Submitted successfully."
-            : "Sync failed. Please retry.";
-        feedback.classList.toggle("form-feedback-success", syncResult?.syncStatus !== syncStatusValues.failed);
-        feedback.classList.toggle("form-feedback-error", syncResult?.syncStatus === syncStatusValues.failed);
+        feedback.textContent = syncResult?.ok !== false ? "Submitted" : "Failed - try again";
+        feedback.classList.toggle("form-feedback-success", syncResult?.ok !== false);
+        feedback.classList.toggle("form-feedback-error", syncResult?.ok === false);
       }
       window.location.href = formsHomeUrl;
     });
   }
 }
+
+
+
+
