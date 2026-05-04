@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "2026-04-29-03";
+  const APP_VERSION = "2026-05-field-01";
   const SW_URL = `/sw.js?v=${encodeURIComponent(APP_VERSION)}`;
   let hasRegisteredServiceWorker = false;
   let isReloadingForUpdate = false;
@@ -60,6 +60,63 @@
     document.body.append(banner);
   };
 
+  const showVersionMarker = () => {
+    if (document.getElementById("app-version-marker")) {
+      return;
+    }
+
+    const marker = document.createElement("div");
+    marker.id = "app-version-marker";
+    marker.setAttribute("aria-label", `Assessment Forms version ${APP_VERSION}`);
+    marker.style.position = "fixed";
+    marker.style.left = "12px";
+    marker.style.bottom = "12px";
+    marker.style.zIndex = "9998";
+    marker.style.padding = "6px 10px";
+    marker.style.borderRadius = "999px";
+    marker.style.background = "rgba(255, 255, 255, 0.92)";
+    marker.style.border = "1px solid rgba(20, 30, 43, 0.12)";
+    marker.style.boxShadow = "0 10px 30px rgba(0, 0, 0, 0.08)";
+    marker.style.color = "#1f2937";
+    marker.style.font = "600 12px/1.2 Manrope, system-ui, sans-serif";
+    marker.textContent = `Version ${APP_VERSION}`;
+    document.body.append(marker);
+  };
+
+  const showFormsBootError = () => {
+    if (document.getElementById("forms-boot-error")) {
+      return;
+    }
+
+    const errorCard = document.createElement("div");
+    errorCard.id = "forms-boot-error";
+    errorCard.setAttribute("role", "alert");
+    errorCard.style.margin = "16px auto";
+    errorCard.style.maxWidth = "960px";
+    errorCard.style.padding = "14px 16px";
+    errorCard.style.borderRadius = "16px";
+    errorCard.style.background = "#fff4e5";
+    errorCard.style.border = "1px solid #f4b266";
+    errorCard.style.color = "#7c2d12";
+    errorCard.style.font = "600 14px/1.5 Manrope, system-ui, sans-serif";
+    errorCard.textContent = `This form did not load completely. Please refresh once. If the problem continues, clear old site data/service worker for this device. Assessment Forms version: ${APP_VERSION}`;
+
+    const target = document.querySelector("[data-form-page]") || document.body;
+    target.prepend(errorCard);
+  };
+
+  const monitorFormsBoot = () => {
+    if (!document.querySelector("[data-form-page]")) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      if (!window.__SHEHERSAAZ_FORMS_BOOTED__) {
+        showFormsBootError();
+      }
+    }, 3000);
+  };
+
   const registerServiceWorker = () => {
     if (
       hasRegisteredServiceWorker ||
@@ -116,5 +173,13 @@
     SW_URL,
     versionedPath,
     registerServiceWorker,
+    showFormsBootError,
   };
+
+  console.info(`Assessment Forms version: ${APP_VERSION}`);
+
+  window.addEventListener("DOMContentLoaded", () => {
+    showVersionMarker();
+    monitorFormsBoot();
+  });
 })();

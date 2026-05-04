@@ -1,4 +1,4 @@
-const APP_VERSION = "2026-04-29-03";
+const APP_VERSION = "2026-05-field-01";
 const CACHE_NAME = `assessment-forms-v${APP_VERSION}`;
 const LEGACY_CACHE_PREFIXES = ["assessment-forms-v", "app-shell-", "shehersaaz-app-", "shehersaaz-"];
 const PRECACHE_URLS = [
@@ -23,7 +23,14 @@ const PRECACHE_URLS = [
   `/assets/images/UN-Habitat Logo Vector.png?v=${APP_VERSION}`,
 ];
 
-const isCacheableResponse = (response) => Boolean(response && response.ok);
+const isCacheableResponse = (request, response) =>
+  Boolean(
+    request &&
+    response &&
+    request.method === "GET" &&
+    response.ok &&
+    response.type === "basic"
+  );
 
 const deleteOldCaches = async () => {
   const keys = await caches.keys();
@@ -35,7 +42,7 @@ const deleteOldCaches = async () => {
 };
 
 const cacheResponse = async (request, response) => {
-  if (!isCacheableResponse(response)) {
+  if (!isCacheableResponse(request, response)) {
     return response;
   }
 

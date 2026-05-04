@@ -7,19 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../assets/css/forms.css?v=2026-04-29-03">
-  <script src="../assets/js/app-config.js?v=2026-04-29-03"></script>
-  <script src="../assets/js/forms.js?v=2026-04-29-03" defer></script>
+  <link rel="stylesheet" href="../assets/css/forms.css?v=2026-05-field-01">
+  <script src="../assets/js/app-config.js?v=2026-05-field-01"></script>
+  <script src="../assets/js/forms.js?v=2026-05-field-01" defer></script>
 </head>
 <body class="site-shell">
-  <main class="form-page">
+  <main class="form-page" data-form-page="engineering">
     <section class="form-card">
       <div class="card-heading">
         <div>
           <p class="eyebrow">Assessment module 3</p>
           <h1>Engineering Assessment</h1>
         </div>
-        <a class="back-link" href="index.html">Back to home</a>
+        <a class="back-link" href="index.html?v=2026-05-field-01">Back to home</a>
       </div>
 
       <div class="form-body">
@@ -30,7 +30,7 @@
 
         <p class="helper-text selected-household-summary" data-selected-household-summary hidden></p>
 
-        <form class="engineering-form" data-engineering-form novalidate>
+        <form id="engineering-form" class="engineering-form" data-engineering-form novalidate>
           <div class="assessment-grid">
             <label class="field field-span-1">
               <span>Household ID</span>
@@ -40,13 +40,6 @@
             <label class="field field-span-1">
               <span>Selected Household</span>
               <input type="text" data-selected-household-name readonly>
-            </label>
-
-            <label class="field field-span-1">
-              <span>Engineer Name<span class="required">*</span></span>
-              <select data-engineer-select required>
-                <option value="" selected disabled hidden>Select engineer</option>
-              </select>
             </label>
 
           </div>
@@ -295,7 +288,11 @@
 
               <label class="field field-span-1">
                 <span>Material used in overhead tanks<span class="required">*</span></span>
-                <input type="text" placeholder="Enter material used" data-tank-material="overhead">
+                <select data-tank-material="overhead">
+                  <option value="" selected disabled hidden>Select material</option>
+                  <option value="Plastic">Plastic</option>
+                  <option value="Cemented">Cemented</option>
+                </select>
               </label>
 
               <label class="field field-span-1">
@@ -307,12 +304,12 @@
             <div class="engineering-table-wrap tank-table-wrap">
               <table class="engineering-table engineering-table--tank">
                 <thead>
-                  <tr>
+                  <tr data-overhead-tank-head>
                     <th>Tank</th>
-                    <th>Depth</th>
-                    <th>Width</th>
-                    <th>Length</th>
-                    <th>Capacity (D x W x L)</th>
+                    <th data-overhead-dimension-head>Depth</th>
+                    <th data-overhead-dimension-head>Width</th>
+                    <th data-overhead-dimension-head>Length</th>
+                    <th data-overhead-capacity-head>Capacity</th>
                   </tr>
                 </thead>
                 <tbody data-tank-body="overhead">
@@ -341,98 +338,16 @@
             </select>
           </label>
 
-          <div class="section-header section-header-compact engineering-block-title">
-            <h3>Question 6. The house is not appropriate for RWHU</h3>
-            <p>If such is the case, please briefly enlist the reasons for rejection.</p>
-          </div>
-
-          <label class="field engineering-block">
-            <span>Reasons for rejection<span class="required">*</span></span>
-            <textarea rows="6" placeholder="Write the reasons for rejection here" required></textarea>
-          </label>
-
-          <div class="section-header section-header-compact engineering-block-title">
-            <h3>Question 8. Calculating household's water need and determining required storage capacity</h3>
-            <p>Calculation of rainwater that can potentially be harvested through available catchment area/s.</p>
-          </div>
-
-          <div class="engineering-table-wrap">
-            <table class="engineering-table engineering-table--calc">
-              <colgroup>
-                <col style="width: 56%">
-                <col style="width: 44%">
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th>Calculations</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>
-                    Total available area (in square feet) that is exposed to rainwater and can act as catchment area (A)
-                    <small class="engineering-note">Calculated from Question 1 housing structure dimensions.</small>
-                  </td>
-                  <td class="engineering-calc-cell">
-                    <div class="engineering-calc-line">
-                      <span>A =</span>
-                      <input type="text" data-water-need-area readonly>
-                      <span>Square feet</span>
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td>
-                    Convert area (A) into three dimensional space assuming 01" (0.083 ft.) of rain has fallen (S)
-                  </td>
-                  <td class="engineering-calc-cell">
-                    <div class="engineering-calc-line">
-                      <span>S = 0.083 x A =</span>
-                      <input type="text" data-water-need-space readonly>
-                      <span>Space in cubic feet</span>
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td>1 cubic feet of space can hold</td>
-                  <td class="engineering-calc-cell">
-                    <div class="engineering-calc-line">
-                      <span>28.32 liters of water</span>
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td>Run-off factor</td>
-                  <td class="engineering-calc-cell">
-                    <div class="engineering-calc-line">
-                      <span>0.9</span>
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td>Quantity of rainwater that can be harvested (Q)</td>
-                  <td class="engineering-calc-cell">
-                    <div class="engineering-calc-line">
-                      <span>Q =</span>
-                      <input type="text" data-water-need-quantity readonly>
-                      <span>Liters</span>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
           <p class="helper-text" data-engineering-feedback aria-live="polite"></p>
         </form>
       </div>
 
       <div class="form-actions">
-        <a class="button button-muted" href="index.html">Cancel</a>
-        <button class="button button-primary" type="button" data-engineering-submit>Submit</button>
+        <a class="button button-muted" href="index.html?v=2026-05-field-01">Cancel</a>
+        <button class="button button-primary" type="submit" form="engineering-form" data-engineering-submit>Submit</button>
       </div>
     </section>
   </main>
+  <noscript><div style="margin:16px auto;max-width:960px;padding:14px 16px;border-radius:16px;background:#fff4e5;border:1px solid #f4b266;color:#7c2d12;font:600 14px/1.5 Manrope,system-ui,sans-serif;">JavaScript is required to use this form safely. Please enable JavaScript and reload. Assessment Forms version: 2026-05-field-01</div></noscript>
 </body>
 </html>

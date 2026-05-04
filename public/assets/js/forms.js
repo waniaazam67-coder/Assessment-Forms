@@ -1,3 +1,5 @@
+window.__SHEHERSAAZ_FORMS_BOOTED__ = true;
+
 const manualDialog = document.querySelector("[data-manual-dialog]");
 const openManualButton = document.querySelector("[data-open-manual]");
 const closeManualButton = document.querySelector("[data-close-manual]");
@@ -18,7 +20,7 @@ const localSubmissionStatusesStorageKey = "shehersaaz-local-submission-statuses"
 const lastSuccessfulSyncStorageKey = "shehersaaz-last-successful-sync-at";
 const generatedIdsStorageKey = "shehersaaz-generated-household-ids";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
-const frontendAssetVersion = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-04-29-03";
+const frontendAssetVersion = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-05-field-01";
 const formsHomeUrl = window.__SHEHERSAAZ_APP__?.versionedPath?.("/pages/index.html") || `/pages/index.html?v=${frontendAssetVersion}`;
 const offlineStateDbName = "shehersaaz-offline-state";
 const offlineStateStoreName = "kv";
@@ -224,6 +226,29 @@ const ensureOfflineStateReady = () => {
 };
 
 window.__SHEHERSAAZ_APP__?.registerServiceWorker?.();
+
+const interceptManagedFormSubmit = (form, submitter, options = {}) => {
+  if (!form) {
+    return;
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (typeof options.onSubmit === "function") {
+      options.onSubmit(event);
+      return;
+    }
+
+    if (submitter && !submitter.disabled) {
+      submitter.click();
+      return;
+    }
+
+    window.__SHEHERSAAZ_APP__?.showFormsBootError?.();
+  });
+};
 
 if (manualDialog && openManualButton && closeManualButton) {
   openManualButton.addEventListener("click", () => {
@@ -1490,6 +1515,21 @@ const getEngineeringAreaFromSource = (source = {}) => {
   );
 };
 
+const plasticTankCapacityOptions = ["300", "500", "700", "70", "800", "1000", "1200", "1500", "2000"];
+
+const getEngineerNameFromSource = (source = {}) => {
+  if (!source || typeof source !== "object") {
+    return "";
+  }
+
+  return String(
+    source.engineerName ||
+    source.engineer_name ||
+    source.engineer ||
+    ""
+  ).trim();
+};
+
 const hydrateHouseholdRecordFromBackend = async (householdId) => {
   if (!householdId) {
     return null;
@@ -1517,6 +1557,7 @@ const hydrateHouseholdRecordFromBackend = async (householdId) => {
         city: record.city || readSelectedHousehold()?.city || "",
         respondentCnic: record.respondentCnic || readSelectedHousehold()?.respondentCnic || "",
         headCnic: record.headCnic || readSelectedHousehold()?.headCnic || "",
+        engineerName: getEngineerNameFromSource(record) || readSelectedHousehold()?.engineerName || "",
       });
       return record;
     }
@@ -2148,13 +2189,6 @@ const getEngineeringTableRow = ({
     housing_area_sq_ft: housingAreaInput?.value || "",
     total_catchment_area_sq_ft: catchmentTotalAreaInput?.value || "",
     proposed_storage_capacity: form.querySelector("[data-proposed-storage-capacity]")?.value || "",
-    reasons_for_rejection: form.querySelector("textarea")?.value || "",
-    water_need_area_a_sq_ft: waterNeedAreaInput?.value || "",
-    water_need_space_s_cubic_ft: waterNeedSpaceInput?.value || "",
-    water_need_quantity_q_liters: waterNeedQuantityInput?.value || "",
-    water_need_household_size: waterNeedHouseholdSizeInput?.value || "",
-    water_need_daily_liters: waterNeedDailyInput?.value || "",
-    water_need_storage_liters: waterNeedStorageInput?.value || "",
   };
 
   Object.assign(row, getCheckboxStateRow(form.querySelectorAll("input[name='roof-material']"), "roof_material"));
@@ -2188,6 +2222,7 @@ const getEngineeringTableRow = ({
         width: generatedRow.querySelector("[data-tank-width]")?.value || "",
         length: generatedRow.querySelector("[data-tank-length]")?.value || "",
         capacity: generatedRow.querySelector("[data-tank-capacity]")?.value || "",
+        selectedCapacity: generatedRow.querySelector("[data-plastic-tank-capacity]")?.value || "",
       }))
     );
   });
@@ -2402,6 +2437,17 @@ const staffDirectoryByCity = {
 };
 
 const getStaffByCity = (city) => staffDirectoryByCity[city] || { cmos: [], engineers: [] };
+const getEngineerPlaceholderByCity = (city) => {
+  if (city === "Rawalpindi") {
+    return "Select Rawalpindi engineer";
+  }
+
+  if (city === "Nowshera") {
+    return "Select Nowshera engineer";
+  }
+
+  return "Select engineer";
+};
 
 const populateSelectOptions = (select, placeholder, values) => {
   if (!select) {
@@ -3179,6 +3225,8 @@ if (inventoryForm) {
   const inventorySubmitButton = document.querySelector("[data-inventory-submit]");
   let otherItemCount = 0;
 
+  interceptManagedFormSubmit(inventoryForm, inventorySubmitButton);
+
   const createOtherItemRow = () => {
     otherItemCount += 1;
     const row = document.createElement("tr");
@@ -3608,6 +3656,8 @@ if (socioeconomicForm) {
   const addFacilityButton = document.querySelector("[data-add-facility]");
   const socioRequiredCheckboxGroups = Array.from(socioeconomicForm.querySelectorAll("[data-required-checkbox-group]"));
 
+  interceptManagedFormSubmit(socioeconomicForm, socioContinueButton);
+
   const socioStepOrder = ["housing", "demographics", "utilities", "urban", "flooding"];
 
   const clearSocioFieldError = (element) => {
@@ -3921,6 +3971,7 @@ if (socioeconomicForm) {
 
 if (engineeringForm) {
   const engineeringSubmitButton = document.querySelector("[data-engineering-submit]");
+  interceptManagedFormSubmit(engineeringForm, engineeringSubmitButton);
   const engineeringFeedback = document.querySelector("[data-engineering-feedback]");
   const engineerSelect = engineeringForm.querySelector("[data-engineer-select]");
   const toggleCheckboxes = Array.from(engineeringForm.querySelectorAll("[data-toggle-target]"));
@@ -3940,6 +3991,7 @@ if (engineeringForm) {
   const waterNeedStorageInput = engineeringForm.querySelector("[data-water-need-storage]");
   const engineeringRequiredCheckboxGroups = Array.from(engineeringForm.querySelectorAll("[data-required-checkbox-group]"));
   const engineeringRequiredRadioGroups = Array.from(engineeringForm.querySelectorAll("[data-required-radio-group]"));
+  const overheadTankHead = engineeringForm.querySelector("[data-overhead-tank-head]");
 
   const clearEngineeringFieldError = (element) => {
     element?.classList.remove("field-error");
@@ -4006,6 +4058,40 @@ if (engineeringForm) {
         materialInput.required = enabled;
       }
     });
+  };
+
+  const getTankMaterialValue = (tankType) => {
+    return engineeringForm.querySelector(`[data-tank-material='${tankType}']`)?.value || "";
+  };
+
+  const isPlasticOverheadTank = () => getTankMaterialValue("overhead") === "Plastic";
+
+  const syncOverheadTankTableLayout = () => {
+    if (!overheadTankHead) {
+      return;
+    }
+
+    const isPlastic = isPlasticOverheadTank();
+    const overheadTankBody = engineeringForm.querySelector("[data-tank-body='overhead']");
+    overheadTankHead.querySelectorAll("[data-overhead-dimension-head]").forEach((cell) => {
+      cell.hidden = isPlastic;
+    });
+
+    const capacityHead = overheadTankHead.querySelector("[data-overhead-capacity-head]");
+    if (capacityHead) {
+      capacityHead.textContent = isPlastic ? "Capacity (Dropdown)" : "Capacity (Liters)";
+    }
+
+    if (overheadTankBody) {
+      overheadTankBody.querySelectorAll("[data-generated-tank-row='overhead']").forEach((row) => {
+        row.querySelectorAll("[data-tank-depth], [data-tank-width], [data-tank-length]").forEach((input) => {
+          const cell = input.closest("td");
+          if (cell) {
+            cell.hidden = isPlastic;
+          }
+        });
+      });
+    }
   };
 
   const validateEngineeringForm = () => {
@@ -4205,16 +4291,32 @@ if (engineeringForm) {
       return;
     }
 
+    const isPlastic = tankType === "overhead" && isPlasticOverheadTank();
+    syncOverheadTankTableLayout();
+
     for (let index = 0; index < count; index += 1) {
       const row = document.createElement("tr");
       row.dataset.generatedTankRow = tankType;
-      row.innerHTML = `
-        <td>${index + 1}</td>
-        <td><input type="number" min="0" step="0.01" placeholder="D" data-tank-depth></td>
-        <td><input type="number" min="0" step="0.01" placeholder="W" data-tank-width></td>
-        <td><input type="number" min="0" step="0.01" placeholder="L" data-tank-length></td>
-        <td><input type="text" placeholder="Capacity" data-tank-capacity readonly></td>
-      `;
+      if (isPlastic) {
+        row.innerHTML = `
+          <td>${index + 1}</td>
+          <td colspan="4">
+            <select data-plastic-tank-capacity>
+              <option value="" selected disabled hidden>Select capacity</option>
+              ${plasticTankCapacityOptions.map((option) => `<option value="${option}">${option} liters</option>`).join("")}
+            </select>
+            <input type="hidden" data-tank-capacity>
+          </td>
+        `;
+      } else {
+        row.innerHTML = `
+          <td>${index + 1}</td>
+          <td><input type="number" min="0" step="0.01" placeholder="D" data-tank-depth></td>
+          <td><input type="number" min="0" step="0.01" placeholder="W" data-tank-width></td>
+          <td><input type="number" min="0" step="0.01" placeholder="L" data-tank-length></td>
+          <td><input type="text" placeholder="Capacity" data-tank-capacity readonly></td>
+        `;
+      }
       tankBody.append(row);
     }
   };
@@ -4236,10 +4338,19 @@ if (engineeringForm) {
   };
 
   const syncTankRow = (row, tankType) => {
+    const capacityInput = row.querySelector("[data-tank-capacity]");
+    if (tankType === "overhead" && isPlasticOverheadTank()) {
+      const capacitySelect = row.querySelector("[data-plastic-tank-capacity]");
+      if (capacityInput) {
+        capacityInput.value = capacitySelect?.value || "";
+      }
+      syncTankTotals(tankType);
+      return;
+    }
+
     const depthInput = row.querySelector("[data-tank-depth]");
     const widthInput = row.querySelector("[data-tank-width]");
     const lengthInput = row.querySelector("[data-tank-length]");
-    const capacityInput = row.querySelector("[data-tank-capacity]");
 
     if (!depthInput || !widthInput || !lengthInput || !capacityInput) {
       return;
@@ -4250,7 +4361,10 @@ if (engineeringForm) {
     const length = Number.parseFloat(lengthInput.value);
 
     if (Number.isFinite(depth) && Number.isFinite(width) && Number.isFinite(length)) {
-      capacityInput.value = (depth * width * length).toFixed(2);
+      const rawCapacity = depth * width * length;
+      capacityInput.value = tankType === "overhead"
+        ? (rawCapacity * 28.32).toFixed(2)
+        : rawCapacity.toFixed(2);
     } else {
       capacityInput.value = "";
     }
@@ -4315,6 +4429,9 @@ if (engineeringForm) {
     const staff = getStaffByCity(city);
 
     populateSelectOptions(engineerSelect, "Select engineer", staff.engineers);
+    if (engineerSelect) {
+      engineerSelect.disabled = true;
+    }
   };
 
   const applyEngineeringDefaults = async () => {
@@ -4379,6 +4496,12 @@ if (engineeringForm) {
 
     if (source.formState) {
       restoreFormState(engineeringForm, source.formState);
+      tankCountInputs.forEach((input) => {
+        const tankType = input.dataset.tankCount;
+        const count = Math.max(0, Number.parseInt(input.value || "0", 10) || 0);
+        createTankRows(tankType, count);
+      });
+      restoreFormState(engineeringForm, source.formState);
     }
 
     ["underground", "overhead"].forEach((tankType) => {
@@ -4406,7 +4529,10 @@ if (engineeringForm) {
     syncCatchmentTotalArea();
     syncWaterNeedCalculations();
     syncEngineerOptions();
-    setSelectValue(engineerSelect, source.engineerName || householdRecord?.engineerName || "");
+    setSelectValue(
+      engineerSelect,
+      getEngineerNameFromSource(source) || getEngineerNameFromSource(householdRecord)
+    );
     toggleCheckboxes.forEach((checkbox) => {
       syncToggleField(checkbox);
     });
@@ -4454,6 +4580,19 @@ if (engineeringForm) {
       });
     });
 
+    engineeringForm.querySelectorAll("[data-tank-material]").forEach((input) => {
+      input.addEventListener("change", () => {
+        if (input.dataset.tankMaterial === "overhead") {
+          const overheadCountInput = engineeringForm.querySelector("[data-tank-count='overhead']");
+          const count = Math.max(0, Number.parseInt(overheadCountInput?.value || "0", 10) || 0);
+          syncOverheadTankTableLayout();
+          createTankRows("overhead", count);
+          syncTankTotals("overhead");
+        }
+        syncEngineeringConditionalRequirements();
+      });
+    });
+
     tankAvailabilityInputs.forEach((input) => {
       input.addEventListener("change", () => {
         syncTankSectionsFromEngineeringSelection();
@@ -4494,6 +4633,17 @@ if (engineeringForm) {
     syncTankRow(row, tankType);
     });
 
+    engineeringForm.addEventListener("change", (event) => {
+      const row = event.target.closest("[data-generated-tank-row]");
+      if (!row) {
+        return;
+      }
+
+      const tankType = row.dataset.generatedTankRow;
+      syncTankRow(row, tankType);
+    });
+
+    syncOverheadTankTableLayout();
     syncTankSectionsFromEngineeringSelection();
     syncEngineeringConditionalRequirements();
     syncHousingStructureArea();
@@ -4537,7 +4687,7 @@ if (engineeringForm) {
       }
 
       const householdId = selectedHouseholdIdInput ? selectedHouseholdIdInput.value.trim() : "";
-      const engineerName = engineerSelect ? engineerSelect.value.trim() : "";
+      const engineerName = getEngineerNameFromSource(readSelectedHousehold()) || getEngineerNameFromSource(getHouseholdRecordById(householdId));
       const catchmentTotalArea = catchmentTotalAreaInput ? catchmentTotalAreaInput.value.trim() : "";
       const catchmentRowPayload = catchmentRows
         .map((row) => ({
@@ -4567,7 +4717,6 @@ if (engineeringForm) {
         waterNeedHouseholdSize: waterNeedHouseholdSizeInput?.value || "",
         waterNeedDaily: waterNeedDailyInput?.value || "",
         proposedStorageCapacity: engineeringForm.querySelector("[data-proposed-storage-capacity]")?.value || "",
-        engineeringTankSpace: engineeringForm.querySelector("[data-water-need-storage]")?.value || "",
         tableRow: getEngineeringTableRow({
           form: engineeringForm,
           engineerName,
@@ -4632,16 +4781,19 @@ if (householdForm) {
   const tabs = Array.from(document.querySelectorAll("[data-step-tab]"));
   const panels = Array.from(document.querySelectorAll("[data-step-panel]"));
   const continueButton = document.querySelector("[data-household-continue]");
+  interceptManagedFormSubmit(householdForm, continueButton);
   const feedback = document.querySelector("[data-form-feedback]");
   const inlineEligibilityMessage = document.querySelector("[data-eligibility-inline-message]");
   const householdIdInput = document.querySelector("[data-household-id]");
   const surveyDateInput = document.querySelector("[data-survey-date]");
   const householdLocationInput = document.querySelector("[data-household-location]");
   const enumeratorSelect = document.querySelector("[data-enumerator-select]");
+  const householdEngineerSelect = document.querySelector("[data-household-engineer-select]");
   const citySelect = document.querySelector("[data-city-select]");
   const ucncSelect = document.querySelector("[data-ucnc-select]");
   const catchmentAreaInput = document.querySelector("[data-catchment-area]");
   const tankSpaceSelect = document.querySelector("[data-tank-space]");
+  const slopeSelect = document.querySelector("[data-slope-select]");
   const interviewAddressInput = document.querySelector("[data-interview-address]");
   const respondantGenderInput = document.querySelector("[data-respondant-gender]");
   const respondantPhoneInput = document.querySelector("[data-respondant-phone]");
@@ -4683,7 +4835,9 @@ if (householdForm) {
     const address = interviewAddressInput?.value.trim() || "";
     const catchmentArea = catchmentAreaInput?.value || "";
     const tankSpace = tankSpaceSelect?.value || "";
+    const slope = slopeSelect?.value || "";
     const enumeratorName = enumeratorSelect?.value || "";
+    const engineerName = householdEngineerSelect?.value || "";
     const headName = respondantHeadSelect?.value === "No"
       ? headNameInput?.value.trim() || ""
       : respondantNameInput?.value.trim() || "";
@@ -4703,8 +4857,10 @@ if (householdForm) {
       ucnc,
       interviewAddress: address,
       enumeratorName,
+      engineerName,
       catchmentArea,
       tankSpace,
+      slope,
       eligibilityStatus,
       respondentIsHouseholdHead,
       householdHeadCnic: headCnic,
@@ -4726,7 +4882,9 @@ if (householdForm) {
       address,
       catchmentArea,
       tankSpace,
+      slope,
       enumeratorName,
+      engineerName,
       respondentIsHouseholdHead,
       relationshipToHead,
       headName,
@@ -4888,8 +5046,12 @@ if (householdForm) {
     enumeratorSelect.innerHTML = '<option value="" selected disabled hidden>Select CMO</option>';
   }
 
+  if (householdEngineerSelect) {
+    householdEngineerSelect.innerHTML = '<option value="" selected disabled hidden>Select engineer</option>';
+  }
+
   const populateStaffOptions = () => {
-    if (!enumeratorSelect) {
+    if (!enumeratorSelect && !householdEngineerSelect) {
       return;
     }
 
@@ -4897,14 +5059,16 @@ if (householdForm) {
     const staffSet = getStaffByCity(selectedCity);
 
     if (enumeratorSelect) {
-      enumeratorSelect.innerHTML = '<option value="" selected disabled hidden>Select CMO</option>';
-      staffSet.cmos.forEach((name) => {
-        const option = document.createElement("option");
-        option.value = name;
-        option.textContent = name;
-        enumeratorSelect.append(option);
-      });
-      enumeratorSelect.value = "";
+      populateSelectOptions(enumeratorSelect, "Select CMO", staffSet.cmos);
+    }
+
+    if (householdEngineerSelect) {
+      populateSelectOptions(
+        householdEngineerSelect,
+        getEngineerPlaceholderByCity(selectedCity),
+        staffSet.engineers
+      );
+      householdEngineerSelect.disabled = staffSet.engineers.length === 0;
     }
   };
 
@@ -5136,7 +5300,8 @@ if (householdForm) {
   const getEligibilityResult = () => {
     const catchmentArea = catchmentAreaInput ? catchmentAreaInput.value : "";
     const tankSpace = tankSpaceSelect ? tankSpaceSelect.value : "";
-    const isEligible = catchmentArea === "Yes" && tankSpace === "Yes";
+    const slope = slopeSelect ? slopeSelect.value : "";
+    const isEligible = catchmentArea === "Yes" && tankSpace === "Yes" && slope === "Yes";
 
     return {
       isEligible,
@@ -5190,7 +5355,7 @@ if (householdForm) {
       return;
     }
 
-    const householdPatch = {
+  const householdPatch = {
       ...getHouseholdAssessmentSnapshot(eligibilityStatus),
       status: eligibilityStatus,
       cmoName: enumeratorSelect?.value || "",
@@ -5198,6 +5363,14 @@ if (householdForm) {
     };
 
     upsertHouseholdRecord(householdId, householdPatch);
+    mergeSelectedHousehold({
+      householdId,
+      headName: householdPatch.headName || readSelectedHousehold()?.headName || "",
+      city: householdPatch.city || readSelectedHousehold()?.city || "",
+      respondentCnic: householdPatch.respondentCnic || readSelectedHousehold()?.respondentCnic || "",
+      headCnic: householdPatch.headCnic || readSelectedHousehold()?.headCnic || "",
+      engineerName: householdPatch.engineerName || readSelectedHousehold()?.engineerName || "",
+    });
     return queueBackendSync("/api/forms/household/submit", {
       householdId,
       payload: householdPatch,

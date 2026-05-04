@@ -7,12 +7,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../assets/css/forms.css?v=2026-04-29-03">
-  <script src="../assets/js/app-config.js?v=2026-04-29-03"></script>
-  <script src="../assets/js/forms.js?v=2026-04-29-03" defer></script>
+  <link rel="stylesheet" href="../assets/css/forms.css?v=2026-05-field-01">
+  <script src="../assets/js/app-config.js?v=2026-05-field-01"></script>
+  <script src="../assets/js/forms.js?v=2026-05-field-01" defer></script>
 </head>
 <body class="site-shell">
-  <main class="form-page">
+  <main class="form-page" data-form-page="inventory">
     <section class="form-card inventory-page">
       <div class="card-heading">
         <div>
@@ -22,14 +22,14 @@
         </div>
         <div class="card-heading__actions">
           <a class="back-link inventory-picker-link" href="inventory.html" data-household-picker-link>Select household</a>
-          <a class="back-link" href="index.html">Back to home</a>
+          <a class="back-link" href="index.html?v=2026-05-field-01">Back to home</a>
         </div>
       </div>
 
       <div class="form-body">
         <p class="helper-text selected-household-summary" data-selected-household-summary hidden></p>
 
-        <form class="inventory-sheet" data-inventory-form novalidate>
+        <form id="inventory-form" class="inventory-sheet" data-inventory-form novalidate>
           <div class="inventory-meta-stack">
             <label class="field field-span-1">
               <span>Household ID</span>
@@ -254,10 +254,11 @@
       </div>
 
       <div class="form-actions">
-        <a class="button button-muted" href="index.html">Cancel</a>
-        <button class="button button-primary" type="button" data-inventory-submit>Submit</button>
+        <a class="button button-muted" href="index.html?v=2026-05-field-01">Cancel</a>
+        <button class="button button-primary" type="submit" form="inventory-form" data-inventory-submit>Submit</button>
       </div>
     </section>
   </main>
+  <noscript><div style="margin:16px auto;max-width:960px;padding:14px 16px;border-radius:16px;background:#fff4e5;border:1px solid #f4b266;color:#7c2d12;font:600 14px/1.5 Manrope,system-ui,sans-serif;">JavaScript is required to use this form safely. Please enable JavaScript and reload. Assessment Forms version: 2026-05-field-01</div></noscript>
 </body>
 </html>

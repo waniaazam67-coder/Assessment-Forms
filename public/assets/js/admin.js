@@ -1,6 +1,6 @@
 const AUTH_KEY = "shehersaaz-management-dashboard-auth";
 const MANAGEMENT_EMAIL = "beenish.kulsoom@shehersaaz.org.pk";
-const DASHBOARD_VERSION = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-04-29-03";
+const DASHBOARD_VERSION = window.__SHEHERSAAZ_APP__?.APP_VERSION || "2026-05-field-01";
 const isLocalFrontendDev = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.port === "5173";
 
 const getConfiguredApiBaseUrl = () => {
