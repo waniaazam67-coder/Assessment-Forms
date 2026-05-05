@@ -72,6 +72,9 @@ const predefinedColumnsByTable = {
     "respondent_phone_number",
     "respondent_gender",
     "respondent_age",
+    "engineer_name",
+    "slope",
+    "nature_of_ownership_documents",
   ],
   socio: [
     ...sharedIdentityColumns,
@@ -99,22 +102,13 @@ const predefinedColumnsByTable = {
     "facility_inside_house_underground_tank",
     "facility_inside_house_sanitation",
     "facility_inside_house_sewer",
-    "water_source_inside_house_municipal_water_supply",
-    "water_source_inside_house_hand_pump",
-    "water_source_inside_house_borehole",
-    "water_source_inside_house_protected_well",
-    "water_source_inside_house_unprotected_well",
-    "water_source_inside_house_rwh",
-    "water_source_inside_house_other",
-    "water_source_outside_house_water_filteration_plant",
-    "water_source_outside_house_water_vendor",
-    "water_source_outside_house_from_neighbour",
-    "water_source_outside_house_hand_pump",
-    "water_source_outside_house_borehole",
-    "water_source_outside_house_tube_well",
-    "water_source_outside_house_canal_river_pond",
-    "water_source_outside_house_spring",
-    "water_source_outside_house_others",
+    "water_source_municipal_water_supply",
+    "water_source_hand_pump",
+    "water_source_borehole",
+    "water_source_rwh",
+    "water_source_from_neighbour",
+    "water_source_water_filtration_plant",
+    "water_source_water_vendor",
     "street_greening_no_trees_in_the_street",
     "street_greening_no_plants_in_the_street",
     "street_greening_there_are_trees_in_the_street",
@@ -143,13 +137,6 @@ const predefinedColumnsByTable = {
     "housing_area_sq_ft",
     "total_catchment_area_sq_ft",
     "proposed_storage_capacity",
-    "reasons_for_rejection",
-    "water_need_area_a_sq_ft",
-    "water_need_space_s_cubic_ft",
-    "water_need_quantity_q_liters",
-    "water_need_household_size",
-    "water_need_daily_liters",
-    "water_need_storage_liters",
     "roof_material_rcc_slab_lanter",
     "roof_material_prefabricated_rcc_slabs_t_iron_and_girder_beams",
     "roof_material_clay_bricks_tiles_t_iron_and_grinder_beams",
@@ -457,6 +444,19 @@ const obsoleteColumnsByTable = {
     "catchment_rows_json",
     "underground_tanks_json",
     "overhead_tanks_json",
+    "reasons_for_rejection",
+    "water_need_area_a_sq_ft",
+    "water_need_space_s_cubic_ft",
+    "water_need_quantity_q_liters",
+    "water_need_household_size",
+    "water_need_daily_liters",
+    "water_need_storage_liters",
+    ...engineeringCatchmentPrefixes.flatMap((prefix) => [
+      `${prefix}_drainage_point_1_diameter`,
+      `${prefix}_drainage_point_2_diameter`,
+      `${prefix}_drainage_point_3_diameter`,
+      `${prefix}_drainage_point_4_diameter`,
+    ]),
   ],
   inventory: [
     "cnic",
@@ -682,12 +682,6 @@ const expandCatchmentRows = (value) => {
     columns[`${prefix}_width_ft`] = normalizeCellValue(catchmentRow.widthFt ?? catchmentRow.width ?? "");
     columns[`${prefix}_length_ft`] = normalizeCellValue(catchmentRow.lengthFt ?? catchmentRow.length ?? "");
     columns[`${prefix}_area_sq_ft`] = normalizeCellValue(catchmentRow.areaSqFt ?? catchmentRow.area ?? "");
-
-    parseJsonArray(catchmentRow.drainagePoints).forEach((point, pointIndex) => {
-      const pointNumber = point && typeof point === "object" && point.point ? point.point : pointIndex + 1;
-      const diameter = point && typeof point === "object" ? point.diameter : point;
-      columns[`${prefix}_drainage_point_${pointNumber}_diameter`] = normalizeCellValue(diameter ?? "");
-    });
   });
 
   return columns;
@@ -1084,12 +1078,6 @@ const buildFlatFormPayload = (formKey, row = {}) => {
       catchmentTotalArea: row.total_catchment_area_sq_ft || "",
       engineeringCatchmentArea: row.total_catchment_area_sq_ft || "",
       engineeringCatchmentTotalArea: row.total_catchment_area_sq_ft || "",
-      waterNeedArea: row.water_need_area_a_sq_ft || "",
-      waterNeedSpace: row.water_need_space_s_cubic_ft || "",
-      waterNeedQuantity: row.water_need_quantity_q_liters || "",
-      waterNeedHouseholdSize: row.water_need_household_size || "",
-      waterNeedDaily: row.water_need_daily_liters || "",
-      engineeringTankSpace: row.water_need_storage_liters || "",
       proposedStorageCapacity: row.proposed_storage_capacity || "",
       formState: {
         version: 1,
@@ -1127,7 +1115,7 @@ const buildHouseholdRecord = (householdRow = {}, statusRow = {}, socioRow = {}, 
     ucnc: householdRow.ucnc || householdPayload.ucnc || "",
     address: householdRow.interview_address || householdPayload.address || "",
     catchmentArea: engineeringRow.total_catchment_area_sq_ft || householdRow.catchment_area || householdPayload.catchmentArea || "",
-    tankSpace: engineeringRow.water_need_storage_liters || inventoryRow.selected_tank_size_liters || householdRow.tank_space || householdPayload.tankSpace || "",
+    tankSpace: engineeringRow.proposed_storage_capacity || inventoryRow.selected_tank_size_liters || householdRow.tank_space || householdPayload.tankSpace || "",
     enumeratorName: householdRow.enumerator_name || householdPayload.enumeratorName || "",
     cmoName: householdRow.enumerator_name || householdPayload.cmoName || householdPayload.enumeratorName || "",
     headName:
@@ -1142,7 +1130,13 @@ const buildHouseholdRecord = (householdRow = {}, statusRow = {}, socioRow = {}, 
     respondentGender: householdRow.respondent_gender || householdPayload.respondentGender || "",
     eligibilityStatus: householdRow.eligibility_status || householdPayload.eligibilityStatus || "",
     status: householdRow.eligibility_status || householdPayload.eligibilityStatus || "",
-    engineerName: engineeringRow.engineer_name || "",
+    engineerName: householdRow.engineer_name || engineeringRow.engineer_name || householdPayload.engineerName || "",
+    slope: householdRow.slope || householdPayload.slope || "",
+    natureOfOwnershipDocuments: householdRow.nature_of_ownership_documents || householdPayload.natureOfOwnershipDocuments || "",
+    catchmentArea: engineeringRow.total_catchment_area_sq_ft || householdRow.catchment_area || householdPayload.catchmentArea || "",
+    engineeringCatchmentArea: engineeringRow.total_catchment_area_sq_ft || householdRow.catchment_area || householdPayload.engineeringCatchmentArea || "",
+    engineeringCatchmentTotalArea: engineeringRow.total_catchment_area_sq_ft || householdRow.catchment_area || householdPayload.engineeringCatchmentTotalArea || "",
+    catchmentTotalArea: engineeringRow.total_catchment_area_sq_ft || householdRow.catchment_area || householdPayload.catchmentTotalArea || "",
     stageStatus: {
       seaf: seafSubmitted,
       engineering: engineeringSubmitted,

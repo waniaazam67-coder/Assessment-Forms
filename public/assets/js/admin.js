@@ -327,6 +327,20 @@ function renderDetailsPanel(container, household) {
         <span>Ineligible Reason</span>
       </article>
     </div>
+    <div class="admin-details-grid">
+      <article class="admin-summary-card">
+        <strong>${escapeHtml(household.engineerName || "-")}</strong>
+        <span>Engineer Name</span>
+      </article>
+      <article class="admin-summary-card">
+        <strong>${escapeHtml(household.slope || "-")}</strong>
+        <span>Slope</span>
+      </article>
+      <article class="admin-summary-card">
+        <strong>${escapeHtml(household.natureOfOwnershipDocuments || "-")}</strong>
+        <span>Nature of Ownership Documents</span>
+      </article>
+    </div>
     <div class="admin-details-stages">
       ${stageCard("Household Information", household.stages.householdInfo)}
       ${stageCard("SEAF", household.stages.seaf)}

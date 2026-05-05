@@ -520,6 +520,18 @@ const isTimeoutError = (error) => {
   );
 };
 
+const isNetworkError = (error) => {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("fetch failed") ||
+    message.includes("econnrefused") ||
+    message.includes("ehostunreach") ||
+    message.includes("enetunreach")
+  );
+};
+
 const getConnectionStatusLabel = () => {
   if (!navigator.onLine) {
     return "Internet required";
@@ -1074,7 +1086,12 @@ const syncQueuedSubmission = async (queueItem, options = {}) => {
 
     await updateConnectionStatusWidget();
     if (!options.silent) {
-      showFloatingMessage(isTimedOut ? "Connection is weak or unavailable. Please try again." : "Failed / Try Again");
+      const message = isTimedOut
+        ? "Connection is weak or unavailable. Please try again."
+        : isNetworkError(error)
+          ? "Backend server is unavailable. Please start the API server and try again."
+          : "Failed / Try Again";
+      showFloatingMessage(message);
     }
 
     return {
@@ -1542,6 +1559,10 @@ const hydrateHouseholdRecordFromBackend = async (householdId) => {
         respondentCnic: record.respondentCnic || readSelectedHousehold()?.respondentCnic || "",
         headCnic: record.headCnic || readSelectedHousehold()?.headCnic || "",
         engineerName: getEngineerNameFromSource(record) || readSelectedHousehold()?.engineerName || "",
+        catchmentArea: record.catchmentArea || readSelectedHousehold()?.catchmentArea || "",
+        engineeringCatchmentArea: record.catchmentArea || readSelectedHousehold()?.engineeringCatchmentArea || "",
+        engineeringCatchmentTotalArea: record.catchmentArea || readSelectedHousehold()?.engineeringCatchmentTotalArea || "",
+        catchmentTotalArea: record.catchmentArea || readSelectedHousehold()?.catchmentTotalArea || "",
       });
       return record;
     }
@@ -2045,8 +2066,9 @@ const getCheckboxStateRow = (inputs, prefix) => {
   const row = {};
 
   Array.from(inputs || []).forEach((input) => {
-    const optionKey = slugifySubmissionKey(input?.value || extractControlLabelText(input) || "option");
-    row[`${prefix}_${optionKey}`] = input?.checked ? "Yes" : "No";
+    const optionKey = slugifySubmissionKey(input?.name || input?.value || extractControlLabelText(input) || "option");
+    const key = prefix ? `${prefix}_${optionKey}` : optionKey;
+    row[key] = input?.checked ? "Yes" : "No";
   });
 
   return row;
@@ -2094,7 +2116,6 @@ const getSocioTableRow = ({
   const facilityCheckboxes = Array.from(facilityList?.querySelectorAll("input[type='checkbox']") || []);
   const utilityPanelCheckboxes = Array.from(utilitiesPanel?.querySelectorAll("input[type='checkbox']") || []);
   const basicUtilityCheckboxes = utilityPanelCheckboxes.slice(0, 3);
-  const waterSourceCheckboxes = utilityPanelCheckboxes.slice(10, 26);
   const utilitiesControls = Array.from(utilitiesPanel?.querySelectorAll("input:not([readonly]):not([type='checkbox']), select, textarea") || []);
   const [quantityOfWaterSelect, qualityOfWaterSelect, solidWasteInput, streetSewersSelect, cleanlinessInput] = utilitiesControls;
   const urbanCheckboxes = Array.from(urbanPanel?.querySelectorAll("input[type='checkbox']") || []);
@@ -2132,14 +2153,10 @@ const getSocioTableRow = ({
 
   Object.assign(row, getCheckboxStateRow(basicUtilityCheckboxes, "basic_utility"));
   Object.assign(row, getCheckboxStateRow(facilityCheckboxes, "facility_inside_house"));
-
-  const waterSourceRow = {};
-  waterSourceCheckboxes.forEach((input, index) => {
-    const sectionPrefix = index < 7 ? "water_source_inside_house" : "water_source_outside_house";
-    const optionKey = slugifySubmissionKey(input?.value || extractControlLabelText(input) || `option_${index + 1}`);
-    waterSourceRow[`${sectionPrefix}_${optionKey}`] = input?.checked ? "Yes" : "No";
-  });
-  Object.assign(row, waterSourceRow);
+  Object.assign(row, getCheckboxStateRow(
+    Array.from(utilitiesPanel?.querySelectorAll("input[type='checkbox'][name^='water_source_']") || []),
+    ""
+  ));
   Object.assign(row, getCheckboxStateRow(streetGreeneryCheckboxes, "street_greening"));
   Object.assign(row, getCheckboxStateRow(houseGreeneryCheckboxes, "house_greening"));
 
@@ -2154,12 +2171,6 @@ const getEngineeringTableRow = ({
   housingWidthInput,
   housingDepthInput,
   housingAreaInput,
-  waterNeedAreaInput,
-  waterNeedSpaceInput,
-  waterNeedQuantityInput,
-  waterNeedHouseholdSizeInput,
-  waterNeedDailyInput,
-  waterNeedStorageInput,
 }) => {
   if (!form) {
     return {};
@@ -2186,10 +2197,6 @@ const getEngineeringTableRow = ({
       widthFt: catchmentRow.querySelector("[data-catchment-width]")?.value || "",
       lengthFt: catchmentRow.querySelector("[data-catchment-length]")?.value || "",
       areaSqFt: catchmentRow.querySelector("[data-catchment-area]")?.value || "",
-      drainagePoints: Array.from(catchmentRow.querySelectorAll("[data-drainage-diameter]")).map((input, diameterIndex) => ({
-        point: diameterIndex + 1,
-        diameter: input.value || "",
-      })),
     }))
   );
 
@@ -2279,7 +2286,9 @@ const getHouseholdInfoTableRow = ({
   enumeratorName,
   catchmentArea,
   tankSpace,
+  engineerName,
   eligibilityStatus,
+  slope,
   respondentIsHouseholdHead,
   householdHeadCnic,
   householdHeadName,
@@ -2289,6 +2298,7 @@ const getHouseholdInfoTableRow = ({
   respondentPhoneNumber,
   respondentGender,
   respondentAge,
+  ownershipDocument,
 }) => {
   return {
     household_id: householdId || "",
@@ -2310,6 +2320,9 @@ const getHouseholdInfoTableRow = ({
     respondent_phone_number: respondentPhoneNumber || "",
     respondent_gender: respondentGender || "",
     respondent_age: respondentAge || "",
+    engineer_name: engineerName || "",
+    slope: slope || "",
+    nature_of_ownership_documents: ownershipDocument || "",
   };
 };
 
@@ -4004,12 +4017,6 @@ if (engineeringForm) {
   const tankCountInputs = Array.from(engineeringForm.querySelectorAll("[data-tank-count]"));
   const tankAvailabilityInputs = Array.from(engineeringForm.querySelectorAll("[data-tank-availability]"));
   const catchmentTotalAreaInput = engineeringForm.querySelector("[data-catchment-total-area]");
-  const waterNeedAreaInput = engineeringForm.querySelector("[data-water-need-area]");
-  const waterNeedSpaceInput = engineeringForm.querySelector("[data-water-need-space]");
-  const waterNeedQuantityInput = engineeringForm.querySelector("[data-water-need-quantity]");
-  const waterNeedHouseholdSizeInput = engineeringForm.querySelector("[data-water-need-household-size]");
-  const waterNeedDailyInput = engineeringForm.querySelector("[data-water-need-daily]");
-  const waterNeedStorageInput = engineeringForm.querySelector("[data-water-need-storage]");
   const engineeringRequiredCheckboxGroups = Array.from(engineeringForm.querySelectorAll("[data-required-checkbox-group]"));
   const engineeringRequiredRadioGroups = Array.from(engineeringForm.querySelectorAll("[data-required-radio-group]"));
   const overheadTankHead = engineeringForm.querySelector("[data-overhead-tank-head]");
@@ -4237,38 +4244,12 @@ if (engineeringForm) {
     const hasAtLeastOneCatchmentRow = () => {
       return catchmentRows.some((row) => {
         const widthValue = row.querySelector("[data-catchment-width]")?.value.trim() || "";
-      const lengthValue = row.querySelector("[data-catchment-length]")?.value.trim() || "";
-      const drainageValues = Array.from(row.querySelectorAll("[data-drainage-diameter]")).some((input) => input.value.trim() !== "");
-      return widthValue !== "" || lengthValue !== "" || drainageValues;
+        const lengthValue = row.querySelector("[data-catchment-length]")?.value.trim() || "";
+        return widthValue !== "" || lengthValue !== "";
       });
     };
 
-    const syncWaterNeedCalculations = () => {
-      if (!waterNeedAreaInput || !waterNeedSpaceInput || !waterNeedQuantityInput) {
-        return;
-      }
-
-      const totalArea = Number.parseFloat(housingAreaInput?.value || "");
-      const effectiveArea = Number.isFinite(totalArea) && totalArea > 0 ? totalArea : 0;
-
-      const space = effectiveArea * 0.083;
-      const quantity = space * 28.32 * 0.9;
-      const householdSize = Number.parseFloat(waterNeedHouseholdSizeInput?.value || "");
-      const dailyNeed = Number.isFinite(householdSize) ? householdSize * 50 : 0;
-      const storageNeed = dailyNeed * 7;
-
-      waterNeedAreaInput.value = effectiveArea > 0 ? effectiveArea.toFixed(2) : "";
-      waterNeedSpaceInput.value = effectiveArea > 0 ? space.toFixed(2) : "";
-      waterNeedQuantityInput.value = effectiveArea > 0 ? quantity.toFixed(2) : "";
-
-      if (waterNeedDailyInput) {
-        waterNeedDailyInput.value = Number.isFinite(householdSize) && householdSize > 0 ? dailyNeed.toFixed(2) : "";
-      }
-
-      if (waterNeedStorageInput) {
-        waterNeedStorageInput.value = Number.isFinite(householdSize) && householdSize > 0 ? storageNeed.toFixed(2) : "";
-      }
-    };
+    const syncWaterNeedCalculations = () => {};
 
     if (housingWidthInput) {
       housingWidthInput.addEventListener("input", syncHousingStructureArea);
@@ -4479,10 +4460,6 @@ if (engineeringForm) {
       housingDepthInput.value = source.housingDepth;
     }
 
-    if (waterNeedHouseholdSizeInput && !waterNeedHouseholdSizeInput.value && source.waterNeedHouseholdSize) {
-      waterNeedHouseholdSizeInput.value = source.waterNeedHouseholdSize;
-    }
-
     const savedCatchmentRows = Array.isArray(source.catchmentRows) ? source.catchmentRows : [];
     savedCatchmentRows.forEach((savedRow, index) => {
       const row = catchmentRows[index];
@@ -4569,25 +4546,6 @@ if (engineeringForm) {
       catchmentTotalAreaInput.value = source.catchmentTotalArea;
     }
 
-    if (waterNeedAreaInput && !waterNeedAreaInput.value && source.waterNeedArea) {
-      waterNeedAreaInput.value = source.waterNeedArea;
-    }
-
-    if (waterNeedSpaceInput && !waterNeedSpaceInput.value && source.waterNeedSpace) {
-      waterNeedSpaceInput.value = source.waterNeedSpace;
-    }
-
-    if (waterNeedQuantityInput && !waterNeedQuantityInput.value && source.waterNeedQuantity) {
-      waterNeedQuantityInput.value = source.waterNeedQuantity;
-    }
-
-    if (waterNeedDailyInput && !waterNeedDailyInput.value && source.waterNeedDaily) {
-      waterNeedDailyInput.value = source.waterNeedDaily;
-    }
-
-    if (waterNeedStorageInput && !waterNeedStorageInput.value && source.engineeringTankSpace) {
-      waterNeedStorageInput.value = source.engineeringTankSpace;
-    }
   };
 
     tankCountInputs.forEach((input) => {
@@ -4618,10 +4576,6 @@ if (engineeringForm) {
         syncEngineeringConditionalRequirements();
       });
     });
-
-    if (waterNeedHouseholdSizeInput) {
-      waterNeedHouseholdSizeInput.addEventListener("input", syncWaterNeedCalculations);
-    }
 
     engineeringForm.addEventListener("input", (event) => {
       const field = event.target.closest(".field");
@@ -4730,11 +4684,6 @@ if (engineeringForm) {
         housingArea: housingAreaInput?.value || "",
         engineeringCatchmentArea: catchmentTotalArea,
         engineeringCatchmentTotalArea: catchmentTotalArea,
-        waterNeedArea: engineeringForm.querySelector("[data-water-need-area]")?.value || "",
-        waterNeedSpace: engineeringForm.querySelector("[data-water-need-space]")?.value || "",
-        waterNeedQuantity: engineeringForm.querySelector("[data-water-need-quantity]")?.value || "",
-        waterNeedHouseholdSize: waterNeedHouseholdSizeInput?.value || "",
-        waterNeedDaily: waterNeedDailyInput?.value || "",
         proposedStorageCapacity: engineeringForm.querySelector("[data-proposed-storage-capacity]")?.value || "",
         tableRow: getEngineeringTableRow({
           form: engineeringForm,
@@ -4744,12 +4693,6 @@ if (engineeringForm) {
           housingWidthInput,
           housingDepthInput,
           housingAreaInput,
-          waterNeedAreaInput,
-          waterNeedSpaceInput,
-          waterNeedQuantityInput,
-          waterNeedHouseholdSizeInput,
-          waterNeedDailyInput,
-          waterNeedStorageInput,
         }),
       };
 
@@ -4766,12 +4709,6 @@ if (engineeringForm) {
           engineeringCatchmentArea: catchmentTotalArea,
           engineeringCatchmentTotalArea: catchmentTotalArea,
           catchmentTotalArea,
-          waterNeedArea: engineeringPayload.waterNeedArea,
-          waterNeedSpace: engineeringPayload.waterNeedSpace,
-          waterNeedQuantity: engineeringPayload.waterNeedQuantity,
-          waterNeedHouseholdSize: engineeringPayload.waterNeedHouseholdSize,
-          waterNeedDaily: engineeringPayload.waterNeedDaily,
-          engineeringTankSpace: engineeringPayload.engineeringTankSpace,
           proposedStorageCapacity: engineeringPayload.proposedStorageCapacity,
           },
         });
@@ -4828,6 +4765,9 @@ if (householdForm) {
   const respondantCnicInput = document.querySelector("[data-respondant-cnic]");
   const respondantNameInput = document.querySelector("[data-respondant-name]");
   const respondantAgeInput = document.querySelector("[data-respondant-age]");
+  const ownershipDocumentTypeSelect = document.querySelector("[data-ownership-document-type]");
+  const ownershipDocumentOtherField = document.querySelector("[data-ownership-document-other-field]");
+  const ownershipDocumentOtherInput = document.querySelector("[data-ownership-document-other]");
 
   const interviewAreas = {
     Rawalpindi: ["UC 1", "UC 2", "UC 4", "UC 5", "UC 6", "UC 12", "UC 37"],
@@ -4872,6 +4812,12 @@ if (householdForm) {
     const respondentAge = respondantAgeInput?.value || "";
     const respondentIsHouseholdHead = respondantHeadSelect?.value || "";
     const relationshipToHead = relationshipToHeadInput?.value || "";
+    const ownershipDocumentType = ownershipDocumentTypeSelect?.value || "";
+    const ownershipDocumentOther = ownershipDocumentOtherInput?.value.trim() || "";
+    const ownershipDocument =
+      ownershipDocumentType === "Any other"
+        ? ownershipDocumentOther
+        : ownershipDocumentType;
     const tableRow = getHouseholdInfoTableRow({
       householdId,
       surveyDate,
@@ -4898,6 +4844,7 @@ if (householdForm) {
       respondentPhoneNumber,
       respondentGender,
       respondentAge,
+      ownershipDocument,
     });
 
     return {
@@ -4925,6 +4872,9 @@ if (householdForm) {
       respondentGender,
       respondentPhoneNumber,
       respondentAge,
+      ownershipDocumentType,
+      ownershipDocumentOther,
+      ownershipDocument,
       eligibilityStatus,
       tableRow,
     };
@@ -5293,6 +5243,20 @@ if (householdForm) {
     return;
   };
 
+  const syncOwnershipDocumentOtherField = () => {
+    if (!ownershipDocumentTypeSelect || !ownershipDocumentOtherField || !ownershipDocumentOtherInput) {
+      return;
+    }
+
+    const isOther = ownershipDocumentTypeSelect.value === "Any other";
+    ownershipDocumentOtherField.hidden = !isOther;
+    ownershipDocumentOtherInput.required = isOther;
+
+    if (!isOther) {
+      ownershipDocumentOtherInput.value = "";
+    }
+  };
+
   const syncRespondantSections = () => {
     if (!respondantHeadSelect || !respondantDetailsSection) {
       return;
@@ -5316,6 +5280,8 @@ if (householdForm) {
         relationshipToHeadInput.value = "";
       }
     }
+
+    syncOwnershipDocumentOtherField();
 
     if (headCnicInput) {
       headCnicInput.required = isNotHead;
@@ -5342,6 +5308,11 @@ if (householdForm) {
   if (relationshipToHeadInput) {
     relationshipToHeadInput.addEventListener("change", syncRelationshipOtherField);
     syncRelationshipOtherField();
+  }
+
+  if (ownershipDocumentTypeSelect) {
+    ownershipDocumentTypeSelect.addEventListener("change", syncOwnershipDocumentOtherField);
+    syncOwnershipDocumentOtherField();
   }
 
   const setActiveStep = (stepName) => {
