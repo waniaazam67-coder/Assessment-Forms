@@ -157,8 +157,6 @@ const predefinedColumnsByTable = {
   ],
   inventory: [
     ...sharedIdentityColumns,
-    "catchment_area_from_engineering",
-    "recommended_tank",
     "selected_tank_size_liters",
     "pallet_spec_for_selected_tank",
     "other_items_count",
@@ -1051,8 +1049,6 @@ const buildFlatFormPayload = (formKey, row = {}) => {
     const items = buildInventoryItemsFromFlatRow(row);
 
     return {
-      catchmentArea: row.catchment_area_from_engineering || "",
-      recommendedTank: row.recommended_tank || "",
       selectedTankSize: row.selected_tank_size_liters || "",
       palletSpec: row.pallet_spec_for_selected_tank || "",
       otherItems: items.map(({ name, quantity }) => ({ name, quantity })),

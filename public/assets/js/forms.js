@@ -2223,8 +2223,6 @@ const getEngineeringTableRow = ({
 
 const getInventoryTableRow = ({
   form,
-  catchmentArea,
-  recommendedTank,
   selectedTankSize,
   palletSpec,
   otherItems,
@@ -2235,8 +2233,6 @@ const getInventoryTableRow = ({
 
   const row = {
     ...getSelectedHouseholdIdentity(),
-    catchment_area_from_engineering: catchmentArea || "",
-    recommended_tank: recommendedTank || "",
     selected_tank_size_liters: selectedTankSize || "",
     pallet_spec_for_selected_tank: palletSpec || "",
     other_items_count: String(Array.isArray(otherItems) ? otherItems.length : 0),
@@ -2900,8 +2896,6 @@ const selectedHouseholdSummary = document.querySelector("[data-selected-househol
 const selectedHouseholdIdInput = document.querySelector("[data-selected-household-id]");
 const selectedHouseholdNameInput = document.querySelector("[data-selected-household-name]");
 const inventoryForm = document.querySelector("[data-inventory-form]");
-const inventoryCatchmentAreaInput = document.querySelector("[data-inventory-catchment-area]");
-const inventoryRecommendedTankInput = document.querySelector("[data-inventory-recommended-tank]");
 const inventoryFeedback = document.querySelector("[data-inventory-feedback]");
 const inventoryWaterTankSelect = document.querySelector("[data-inventory-water-tank-select]");
 const inventoryPalletSpecSelect = document.querySelector("[data-inventory-pallet-spec-select]");
@@ -3334,14 +3328,6 @@ if (inventoryForm) {
     const catchmentArea = await resolveEngineeringCatchmentArea(householdId);
     const recommendedTankSize = getRecommendedTankSize(catchmentArea);
 
-    if (inventoryCatchmentAreaInput) {
-      inventoryCatchmentAreaInput.value = catchmentArea > 0 ? `${catchmentArea.toFixed(2)} sq ft` : "";
-    }
-
-    if (inventoryRecommendedTankInput) {
-      inventoryRecommendedTankInput.value = recommendedTankSize ? `${recommendedTankSize} liters` : "No recommendation";
-    }
-
     if (recommendedTankSize) {
       if (inventoryWaterTankSelect) {
         inventoryWaterTankSelect.value = recommendedTankSize;
@@ -3438,14 +3424,6 @@ if (inventoryForm) {
 
     syncInventoryRowLockState();
 
-    if (inventoryCatchmentAreaInput && inventoryPayload.catchmentArea) {
-      inventoryCatchmentAreaInput.value = inventoryPayload.catchmentArea;
-    }
-
-    if (inventoryRecommendedTankInput && inventoryPayload.recommendedTank) {
-      inventoryRecommendedTankInput.value = inventoryPayload.recommendedTank;
-    }
-
     if (inventoryWaterTankSelect && inventoryPayload.selectedTankSize) {
       inventoryWaterTankSelect.value = inventoryPayload.selectedTankSize;
     }
@@ -3530,12 +3508,10 @@ if (inventoryForm) {
     return keyMap[itemName] || keyMap[normalizedName] || slugifySubmissionKey(itemName);
   };
 
-  const buildInventoryTableRowFromItems = ({ items, catchmentArea, recommendedTank, selectedTankSize, palletSpec }) => {
+  const buildInventoryTableRowFromItems = ({ items, selectedTankSize, palletSpec }) => {
     const otherItems = items.filter((item) => item.isCustom);
     const row = {
       ...getSelectedHouseholdIdentity(),
-      catchment_area_from_engineering: catchmentArea || "",
-      recommended_tank: recommendedTank || "",
       selected_tank_size_liters: selectedTankSize || "",
       pallet_spec_for_selected_tank: palletSpec || "",
       other_items_count: String(otherItems.length),
@@ -3569,8 +3545,6 @@ if (inventoryForm) {
   const collectInventorySubmissionPayload = () => {
     const items = collectInventoryItems();
     const otherItems = items.filter((item) => item.isCustom);
-    const catchmentArea = inventoryCatchmentAreaInput?.value || "";
-    const recommendedTank = inventoryRecommendedTankInput?.value || "";
     const selectedTankSize = inventoryWaterTankSelect?.value || "";
     const palletSpec = inventoryPalletSpecSelect?.value || "";
 
@@ -3591,8 +3565,6 @@ if (inventoryForm) {
       otherItems,
       tableRow: buildInventoryTableRowFromItems({
         items,
-        catchmentArea,
-        recommendedTank,
         selectedTankSize,
         palletSpec,
         otherItems,
@@ -3629,8 +3601,6 @@ if (inventoryForm) {
         syncResult = await setSubmittedFormStatus(householdId, "inventory", "Submitted", {
           payload: inventoryPayload,
           householdPatch: {
-            inventoryCatchmentArea: inventoryPayload.catchmentArea,
-            inventoryRecommendedTank: inventoryPayload.recommendedTank,
             inventorySelectedTankSize: inventoryPayload.selectedTankSize,
           },
         });
