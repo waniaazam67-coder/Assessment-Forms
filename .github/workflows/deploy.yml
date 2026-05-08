@@ -4,20 +4,20 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      HOSTINGER_RESTART_COMMAND: ${{ secrets.HOSTINGER_RESTART_COMMAND }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build project
-        run: npm run build
+      - name: Validate backend dependencies
+        run: npm ci --prefix backend
 
       - name: Setup SSH key
         run: |
@@ -26,9 +26,35 @@ jobs:
           chmod 600 ~/.ssh/hostinger_key
           ssh-keyscan -p ${{ secrets.HOSTINGER_PORT }} ${{ secrets.HOSTINGER_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy dist folder to Hostinger
+      - name: Prepare deploy directory
         run: |
-          rsync -avz --delete \
+          ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }} \
+            ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
+            "mkdir -p ${{ secrets.DEPLOY_PATH }}"
+
+      - name: Deploy backend and public files to Hostinger
+        run: |
+          rsync -az --delete \
             -e "ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }}" \
-            dist/ \
+            --exclude ".git/" \
+            --exclude ".github/" \
+            --exclude "node_modules/" \
+            --exclude "backend/node_modules/" \
+            --exclude "backend/.env" \
+            --exclude "backend/data/" \
+            --exclude "*.log" \
+            public/ backend/ \
             ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.DEPLOY_PATH }}
+
+      - name: Install production dependencies on Hostinger
+        run: |
+          ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }} \
+            ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
+            "cd ${{ secrets.DEPLOY_PATH }}/backend && npm ci --omit=dev"
+
+      - name: Restart Hostinger Node app
+        if: ${{ env.HOSTINGER_RESTART_COMMAND != '' }}
+        run: |
+          ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }} \
+            ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
+            "cd ${{ secrets.DEPLOY_PATH }} && $HOSTINGER_RESTART_COMMAND"
