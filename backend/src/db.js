@@ -1181,6 +1181,35 @@ const buildDateRangeWhereClause = (dateFieldExpression, filters = {}) => {
   };
 };
 
+const eligibleAssessmentStatuses = ["passed", "approved"];
+const failedAssessmentStatuses = ["failed", "rejected", "ineligible"];
+
+const buildEligibilityStatusClause = (statusGroup) => {
+  if (statusGroup === "eligible") {
+    return {
+      clause: `LOWER(TRIM(COALESCE(h.eligibility_status, ''))) IN (${eligibleAssessmentStatuses.map(() => "?").join(", ")})`,
+      params: eligibleAssessmentStatuses,
+    };
+  }
+
+  if (statusGroup === "failed") {
+    return {
+      clause: `LOWER(TRIM(COALESCE(h.eligibility_status, ''))) IN (${failedAssessmentStatuses.map(() => "?").join(", ")})`,
+      params: failedAssessmentStatuses,
+    };
+  }
+
+  return { clause: "", params: [] };
+};
+
+const mergeWhereClause = (whereSql, extraClause) => {
+  if (!extraClause) {
+    return whereSql;
+  }
+
+  return whereSql ? `${whereSql} AND ${extraClause}` : `WHERE ${extraClause}`;
+};
+
 const listTableExportRows = async (tableName, filters = {}) =>
   withConnection(async (connection) => {
     const columns = await getExportColumnNamesForTable(connection, tableName);
@@ -1207,7 +1236,7 @@ const listTableExportRows = async (tableName, filters = {}) =>
     );
   });
 
-const listCombinedExportRows = async (filters = {}) =>
+const listCombinedExportRows = async (filters = {}, options = {}) =>
   withConnection(async (connection) => {
     const householdColumns = await getExportColumnNamesForTable(connection, tableNames.household);
     const socioColumns = await getExportColumnNamesForTable(connection, tableNames.socio);
@@ -1243,6 +1272,8 @@ const listCombinedExportRows = async (filters = {}) =>
       .map(({ expression, alias }) => `${expression} AS ${escapeSqlIdentifier(alias)}`)
       .join(", ");
     const { whereSql, params } = buildDateRangeWhereClause("COALESCE(NULLIF(h.survey_date, ''), DATE(h.updated_at))", filters);
+    const eligibilityFilter = buildEligibilityStatusClause(options.eligibilityStatusGroup);
+    const combinedWhereSql = mergeWhereClause(whereSql, eligibilityFilter.clause);
 
     const [rows] = await connection.query(
       `SELECT ${selectSql}
@@ -1250,9 +1281,9 @@ const listCombinedExportRows = async (filters = {}) =>
        LEFT JOIN ${escapeSqlIdentifier(tableNames.socio)} s ON s.household_id = h.household_id
        LEFT JOIN ${escapeSqlIdentifier(tableNames.engineering)} e ON e.household_id = h.household_id
        LEFT JOIN ${escapeSqlIdentifier(tableNames.inventory)} i ON i.household_id = h.household_id
-       ${whereSql}
+       ${combinedWhereSql}
        ORDER BY h.updated_at DESC, h.household_id DESC`,
-      params
+      [...params, ...eligibilityFilter.params]
     );
 
     return rows.map((row) =>

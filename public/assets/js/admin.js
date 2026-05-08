@@ -598,6 +598,7 @@ async function bootDashboardPage() {
     exportEngineeringCsv: document.querySelector("[data-admin-export-engineering-csv]"),
     exportInventoryCsv: document.querySelector("[data-admin-export-inventory-csv]"),
     exportCombinedCsv: document.querySelector("[data-admin-export-combined-csv]"),
+    exportFailedCombinedCsv: document.querySelector("[data-admin-export-failed-combined-csv]"),
     exportStartDate: document.querySelector("[data-admin-export-start-date]"),
     exportEndDate: document.querySelector("[data-admin-export-end-date]"),
     exportFeedback: document.querySelector("[data-admin-export-feedback]"),
@@ -858,6 +859,12 @@ async function bootDashboardPage() {
     "/api/admin/export/combined",
     "combined_assessment_export.csv",
     "Combined Assessment CSV"
+  );
+  bindBackendExport(
+    elements.exportFailedCombinedCsv,
+    "/api/admin/export/combined/failed",
+    "failed_rejected_assessment_export.csv",
+    "Failed/Rejected Assessment CSV"
   );
 
   elements.summaryCards?.addEventListener("click", (event) => {

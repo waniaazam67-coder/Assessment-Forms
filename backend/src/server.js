@@ -397,7 +397,23 @@ const handleApi = async (req, res, pathname) => {
       req,
       res,
       `combined_assessment_export_${dateStamp}.csv`,
-      await listCombinedExportRows(filters)
+      await listCombinedExportRows(filters, { eligibilityStatusGroup: "eligible" })
+    );
+    return true;
+  }
+
+  if (req.method === "GET" && pathname === "/api/admin/export/combined/failed") {
+    if (!requireAdminSession(req, res)) {
+      return true;
+    }
+    const requestUrl = new URL(req.url || "/", `http://${req.headers.host || `${host}:${port}`}`);
+    const filters = getDateRangeFiltersFromUrl(requestUrl);
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    sendCsvDownload(
+      req,
+      res,
+      `failed_rejected_assessment_export_${dateStamp}.csv`,
+      await listCombinedExportRows(filters, { eligibilityStatusGroup: "failed" })
     );
     return true;
   }

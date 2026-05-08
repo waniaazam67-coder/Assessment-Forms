@@ -45,6 +45,8 @@ Authenticated admin users can also inspect exports through:
 - `GET /api/export?dataset=engineering&format=csv`
 - `GET /api/export?dataset=inventory&format=csv`
 - `GET /api/export?dataset=snapshot&format=json`
+- `GET /api/admin/export/combined` for passed/approved combined assessment CSV rows
+- `GET /api/admin/export/combined/failed` for failed/rejected/ineligible combined assessment CSV rows
 
 Supported export datasets:
 
