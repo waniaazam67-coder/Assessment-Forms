@@ -26,13 +26,6 @@ jobs:
             -e "ssh -p ${{ secrets.HOSTINGER_PORT }} -o StrictHostKeyChecking=no" \
             ./ ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.DEPLOY_PATH }}
 
-      - name: Install dependencies on Hostinger
-        run: |
-          sshpass -p "${{ secrets.HOSTINGER_PASSWORD }}" ssh \
-            -p ${{ secrets.HOSTINGER_PORT }} \
-            -o StrictHostKeyChecking=no \
-            ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
-            'source ~/.bashrc || true; source ~/.profile || true; cd ${{ secrets.DEPLOY_PATH }} && npm ci --omit=dev'
       - name: Restart Node app
         run: |
           sshpass -p "${{ secrets.HOSTINGER_PASSWORD }}" ssh \
