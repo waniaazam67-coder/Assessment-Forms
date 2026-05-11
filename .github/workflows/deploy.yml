@@ -1,60 +1,46 @@
-name: Deploy to Hostinger
+name: Deploy Node App to Hostinger
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      HOSTINGER_RESTART_COMMAND: ${{ secrets.HOSTINGER_RESTART_COMMAND }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate backend dependencies
-        run: npm ci --prefix backend
-
-      - name: Setup SSH key
+      - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/hostinger_key
           chmod 600 ~/.ssh/hostinger_key
           ssh-keyscan -p ${{ secrets.HOSTINGER_PORT }} ${{ secrets.HOSTINGER_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Prepare deploy directory
+      - name: Upload files to Hostinger
         run: |
-          ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }} \
-            ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
-            "mkdir -p ${{ secrets.DEPLOY_PATH }}"
-
-      - name: Deploy backend and public files to Hostinger
-        run: |
-          rsync -az --delete \
-            -e "ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }}" \
-            --exclude ".git/" \
-            --exclude ".github/" \
-            --exclude "node_modules/" \
-            --exclude "backend/node_modules/" \
-            --exclude "backend/.env" \
-            --exclude "backend/data/" \
+          rsync -avz --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude "node_modules" \
             --exclude "*.log" \
-            public/ backend/ \
-            ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.DEPLOY_PATH }}
+            -e "ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }}" \
+            ./ ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.DEPLOY_PATH }}
 
-      - name: Install production dependencies on Hostinger
+      - name: Install dependencies on Hostinger
         run: |
           ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }} \
-            ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
-            "cd ${{ secrets.DEPLOY_PATH }}/backend && npm ci --omit=dev"
+          ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
+          "cd ${{ secrets.DEPLOY_PATH }} && npm ci --omit=dev"
 
-      - name: Restart Hostinger Node app
-        if: ${{ env.HOSTINGER_RESTART_COMMAND != '' }}
+      - name: Restart Node app
+        env:
+          RESTART_COMMAND: ${{ secrets.HOSTINGER_RESTART_COMMAND }}
+        if: env.RESTART_COMMAND != ''
         run: |
           ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }} \
-            ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
-            "cd ${{ secrets.DEPLOY_PATH }} && $HOSTINGER_RESTART_COMMAND"
+          ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
+          "$RESTART_COMMAND"
