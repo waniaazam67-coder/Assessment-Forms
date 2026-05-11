@@ -13,12 +13,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/hostinger_key
-          chmod 600 ~/.ssh/hostinger_key
-          ssh-keyscan -p ${{ secrets.HOSTINGER_PORT }} ${{ secrets.HOSTINGER_HOST }} >> ~/.ssh/known_hosts
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
 
       - name: Upload files to Hostinger
         run: |
@@ -29,17 +25,19 @@ jobs:
             --exclude "*.log" \
             -e "ssh -p ${{ secrets.HOSTINGER_PORT }} -o StrictHostKeyChecking=no" \
             ./ ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.DEPLOY_PATH }}
+
       - name: Install dependencies on Hostinger
         run: |
-          ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }} \
-          ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
-          "cd ${{ secrets.DEPLOY_PATH }} && npm ci --omit=dev"
+          sshpass -p "${{ secrets.HOSTINGER_PASSWORD }}" ssh \
+            -p ${{ secrets.HOSTINGER_PORT }} \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
+            "cd ${{ secrets.DEPLOY_PATH }} && npm ci --omit=dev"
 
       - name: Restart Node app
-        env:
-          RESTART_COMMAND: ${{ secrets.HOSTINGER_RESTART_COMMAND }}
-        if: env.RESTART_COMMAND != ''
         run: |
-          ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }} \
-          ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
-          "$RESTART_COMMAND"
+          sshpass -p "${{ secrets.HOSTINGER_PASSWORD }}" ssh \
+            -p ${{ secrets.HOSTINGER_PORT }} \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
+            "cd ${{ secrets.DEPLOY_PATH }} && touch tmp/restart.txt"
