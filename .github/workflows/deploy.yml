@@ -32,7 +32,7 @@ jobs:
             -p ${{ secrets.HOSTINGER_PORT }} \
             -o StrictHostKeyChecking=no \
             ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
-            "cd ${{ secrets.DEPLOY_PATH }} && npm ci --omit=dev"
+            "export PATH=$HOME/.nvm/versions/node/*/bin:$PATH && cd ${{ secrets.DEPLOY_PATH }} && npm ci --omit=dev"
 
       - name: Restart Node app
         run: |
@@ -40,4 +40,4 @@ jobs:
             -p ${{ secrets.HOSTINGER_PORT }} \
             -o StrictHostKeyChecking=no \
             ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }} \
-            "cd ${{ secrets.DEPLOY_PATH }} && touch tmp/restart.txt"
+            "cd ${{ secrets.DEPLOY_PATH }} && mkdir -p tmp && touch tmp/restart.txt"
