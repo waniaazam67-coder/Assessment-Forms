@@ -22,14 +22,13 @@ jobs:
 
       - name: Upload files to Hostinger
         run: |
-          rsync -avz --delete \
+          sshpass -p "${{ secrets.HOSTINGER_PASSWORD }}" rsync -avz --delete \
             --exclude ".git" \
             --exclude ".github" \
             --exclude "node_modules" \
             --exclude "*.log" \
-            -e "ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }}" \
+            -e "ssh -p ${{ secrets.HOSTINGER_PORT }} -o StrictHostKeyChecking=no" \
             ./ ${{ secrets.HOSTINGER_USERNAME }}@${{ secrets.HOSTINGER_HOST }}:${{ secrets.DEPLOY_PATH }}
-
       - name: Install dependencies on Hostinger
         run: |
           ssh -i ~/.ssh/hostinger_key -p ${{ secrets.HOSTINGER_PORT }} \
